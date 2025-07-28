@@ -24,6 +24,8 @@ export interface ResponseWithExtras {
 }
 
 export interface Agent {
+  [Symbol.dispose](): void;
+  close(): void;
   hostname: string;
   port: number;
   send(options: SendOptions): Promise<ResponseWithExtras>;

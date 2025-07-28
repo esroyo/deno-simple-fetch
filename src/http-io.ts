@@ -66,7 +66,7 @@ export class LineReader {
         headers.append(name, value);
       }
     }
-    
+
     return headers;
   }
 
@@ -114,10 +114,7 @@ export async function readResponse(
   conn: Deno.Conn, 
   options: TimeoutOptions = {}
 ): Promise<ResponseWithExtras> {
-  const stream = connectionToReadableStream(conn);
-  const reader = stream.getReader();
-  const lineReader = new LineReader(reader);
-  
+  const lineReader = new LineReader(connectionToReadableStream(conn).getReader());
   const statusLine = await createAbortablePromise(
     lineReader.readLine(), 
     options
@@ -138,35 +135,27 @@ export async function readResponse(
   const isChunked = headers.get("transfer-encoding")?.includes("chunked");
   const contentEncoding = headers.get("content-encoding");
   
-  // Create body stream from remaining buffer and connection
-  const remainingBuffer = lineReader.getRemainingBuffer();
-  let bodyStream: ReadableStream<Uint8Array>;
-  
-  if (remainingBuffer.length > 0) {
-    const connStream = connectionToReadableStream(conn);
-    bodyStream = new ReadableStream({
-      async start(controller) {
-        controller.enqueue(remainingBuffer);
-        const connReader = connStream.getReader();
-        try {
-          while (true) {
-            const { done, value } = await connReader.read();
-            if (done) break;
-            controller.enqueue(value);
-          }
-          controller.close();
-        } catch (error) {
-          controller.error(error);
-        } finally {
-          connReader.releaseLock();
+    // Create body stream from remaining buffer and connection
+    const remainingBuffer = lineReader.getRemainingBuffer();
+    let bodyStream: ReadableStream<Uint8Array> = new ReadableStream({
+        async start(controller) {
+            if (remainingBuffer.length > 0) {
+                controller.enqueue(remainingBuffer);
+            }
+        },
+        async pull(controller) {
+            try {
+                for await (const chunk of connectionToReadableStream(conn)) {
+                    controller.enqueue(chunk);
+                }
+                controller.close();
+            } catch (error) {
+                controller.error(error);
+            }
         }
-      }
-    });
-  } else {
-    bodyStream = connectionToReadableStream(conn);
-  }
-  
-  // Handle chunked encoding
+    }, { highWaterMark: 0 });
+
+    // Handle chunked encoding
   if (isChunked) {
     bodyStream = bodyStream.pipeThrough(createChunkedDecodingStream());
   } else if (contentLength !== null) {
@@ -295,16 +284,7 @@ async function writeRequestBody(
   conn: Deno.Conn,
   stream: ReadableStream<Uint8Array>
 ): Promise<void> {
-  const reader = stream.getReader();
-  
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      await conn.write(value);
+    for await (const chunk of stream) {
+      await conn.write(chunk);
     }
-  } finally {
-    reader.releaseLock();
-  }
 }

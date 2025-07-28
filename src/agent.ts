@@ -83,8 +83,8 @@ export function createAgent(baseUrl: string, options: TimeoutOptions = {}): Agen
         body,
       });
       
-      const response = await readResponse(connection, options);
-      
+        const response = await readResponse(connection, options);
+
       return {
         ...response,
         conn: connection,
@@ -98,8 +98,16 @@ export function createAgent(baseUrl: string, options: TimeoutOptions = {}): Agen
       isSending = false;
     }
   }
+
+    function close() {
+        connection?.close();
+        connection = undefined;
+        isConnected = false;
+    }
   
   return {
+    [Symbol.dispose]: close,
+    close,
     hostname,
     port,
     send,

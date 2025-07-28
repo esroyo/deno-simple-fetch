@@ -168,23 +168,21 @@ export function createDecompressionStream(format: CompressionFormat = 'gzip'): D
 
 // Connection to ReadableStream
 export function connectionToReadableStream(conn: Deno.Conn): ReadableStream<Uint8Array> {
+  const buffer = new Uint8Array(8192);
   return new ReadableStream({
-    async start(controller) {
-      const buffer = new Uint8Array(8192);
-      
+
+    async pull(controller) {
       try {
-        while (true) {
           const bytesRead = await conn.read(buffer);
           if (bytesRead === null) {
             controller.close();
-            break;
+            return;
           }
           controller.enqueue(buffer.slice(0, bytesRead));
-        }
       } catch (error) {
         controller.error(error);
       }
-    }
-  });
+    },
+  }, { highWaterMark: 0 });
 }
 

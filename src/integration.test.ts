@@ -7,7 +7,7 @@ Deno.test("Integration tests", async (t) => {
   
   try {
     await t.step("gzip decompression", async () => {
-      const agent = createAgent(url);
+      using agent = createAgent(url);
       const response = await agent.send({
         path: "/gzip",
         method: "GET"
@@ -19,7 +19,7 @@ Deno.test("Integration tests", async (t) => {
     });
     
     await t.step("chunked transfer encoding", async () => {
-      const agent = createAgent(url);
+      using agent = createAgent(url);
       const response = await agent.send({
         path: "/chunked",
         method: "GET"
@@ -31,7 +31,7 @@ Deno.test("Integration tests", async (t) => {
     });
     
     await t.step("connection reuse", async () => {
-      const agent = createAgent(url);
+      using agent = createAgent(url);
       
       // First request
       const response1 = await agent.send({
@@ -39,7 +39,7 @@ Deno.test("Integration tests", async (t) => {
         method: "GET"
       });
       assertEquals(response1.status, 200);
-      
+
       // Second request on same connection
       const response2 = await agent.send({
         path: "/json",

@@ -16,6 +16,7 @@ Deno.test("HTTP Agent", async (t) => {
       assertEquals(response.status, 200);
       const text = await response.text();
       assertEquals(text, "Hello, World!");
+      agent.close();
     });
     
     await t.step("JSON response", async () => {
@@ -28,6 +29,7 @@ Deno.test("HTTP Agent", async (t) => {
       assertEquals(response.status, 200);
       const json = await response.json();
       assertEquals(json.message, "Hello, JSON!");
+      agent.close();
     });
     
     await t.step("POST request with body", async () => {
@@ -42,6 +44,7 @@ Deno.test("HTTP Agent", async (t) => {
       assertEquals(response.status, 200);
       const echo = await response.json();
       assertEquals(echo.method, "POST");
+      agent.close();
     });
     
     await t.step("custom headers", async () => {
@@ -54,6 +57,7 @@ Deno.test("HTTP Agent", async (t) => {
       
       const echo = await response.json();
       assertEquals(echo.headers["x-custom-header"], "test-value");
+      agent.close();
     });
     
     await t.step("timeout handling", async () => {
@@ -66,6 +70,7 @@ Deno.test("HTTP Agent", async (t) => {
         }),
         Error
       );
+      agent.close();
     });
     
   } finally {

@@ -14,21 +14,12 @@ export function createBodyParser(
       return cachedArrayBuffer;
     }
     
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
     let totalLength = 0;
-    
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        totalLength += value.length;
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    
+    const chunks: Uint8Array[] = await Array.fromAsync(stream, (chunk) => {
+        totalLength += chunk.length;
+        return chunk;
+    });
+
     const result = new Uint8Array(totalLength);
     let offset = 0;
     for (const chunk of chunks) {
