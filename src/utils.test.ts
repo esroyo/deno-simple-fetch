@@ -8,17 +8,6 @@ Deno.test('Utility functions', async (t) => {
         assertEquals(result, 'success');
     });
 
-    await t.step('createAbortablePromise - timeout', async () => {
-        const slowPromise = new Promise((resolve) => setTimeout(resolve, 200));
-
-        await assertRejects(
-            () => createAbortablePromise(slowPromise, { timeout: 100 }),
-            'The operation timed out.',
-        );
-
-        await slowPromise;
-    });
-
     await t.step('createAbortablePromise - abort signal', async () => {
         const controller = new AbortController();
         const slowPromise = new Promise((resolve) => setTimeout(resolve, 200));
@@ -32,6 +21,20 @@ Deno.test('Utility functions', async (t) => {
                     signal: controller.signal,
                 }),
             Error,
+        );
+
+        await slowPromise;
+    });
+
+    await t.step('createAbortablePromise - AbortSignal.timeout', async () => {
+        const slowPromise = new Promise((resolve) => setTimeout(resolve, 200));
+
+        await assertRejects(
+            () =>
+                createAbortablePromise(slowPromise, {
+                    signal: AbortSignal.timeout(100),
+                }),
+            'The operation timed out.',
         );
 
         await slowPromise;

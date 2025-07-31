@@ -31,6 +31,27 @@ export async function createTestServer(
             return Response.json({ message: 'Hello, JSON!' });
         }
 
+        // Redirect endpoint - returns 302 with Location header
+        if (url.pathname === '/redirect') {
+            return new Response('Redirecting to /redirected-target', {
+                status: 302,
+                headers: {
+                    'location': '/redirected-target',
+                    'content-type': 'text/plain',
+                },
+            });
+        }
+
+        // Redirect target endpoint
+        if (url.pathname === '/redirected-target') {
+            return new Response('You have been redirected!', {
+                status: 200,
+                headers: {
+                    'content-type': 'text/plain',
+                },
+            });
+        }
+
         // Chunked endpoint
         if (url.pathname === '/chunked') {
             const encoder = new TextEncoder();

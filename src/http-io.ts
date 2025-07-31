@@ -10,21 +10,21 @@ import { ResponseWithExtras, TimeoutOptions } from './types.ts';
 
 // Line reader for HTTP headers using ReadableStream
 export class LineReader {
-    private buffer = new Uint8Array(0);
-    private decoder = new TextDecoder();
+    protected _buffer = new Uint8Array(0);
+    protected _decoder = new TextDecoder();
 
-    constructor(private reader: ReadableStreamDefaultReader<Uint8Array>) {}
+    constructor(protected _reader: ReadableStreamDefaultReader<Uint8Array>) {}
 
-    private appendToBuffer(newData: Uint8Array) {
-        const combined = new Uint8Array(this.buffer.length + newData.length);
-        combined.set(this.buffer);
-        combined.set(newData, this.buffer.length);
-        this.buffer = combined;
+    protected _appendToBuffer(newData: Uint8Array) {
+        const combined = new Uint8Array(this._buffer.length + newData.length);
+        combined.set(this._buffer);
+        combined.set(newData, this._buffer.length);
+        this._buffer = combined;
     }
 
-    private findLineEnd(): number {
-        for (let i = 0; i < this.buffer.length - 1; i++) {
-            if (this.buffer[i] === 0x0D && this.buffer[i + 1] === 0x0A) {
+    protected _findLineEnd(): number {
+        for (let i = 0; i < this._buffer.length - 1; i++) {
+            if (this._buffer[i] === 0x0D && this._buffer[i + 1] === 0x0A) {
                 return i;
             }
         }
@@ -33,24 +33,26 @@ export class LineReader {
 
     async readLine(): Promise<string | null> {
         while (true) {
-            const lineEnd = this.findLineEnd();
+            const lineEnd = this._findLineEnd();
             if (lineEnd !== -1) {
-                const line = this.decoder.decode(this.buffer.slice(0, lineEnd));
-                this.buffer = this.buffer.slice(lineEnd + 2);
+                const line = this._decoder.decode(
+                    this._buffer.slice(0, lineEnd),
+                );
+                this._buffer = this._buffer.slice(lineEnd + 2);
                 return line;
             }
 
-            const { done, value } = await this.reader.read();
+            const { done, value } = await this._reader.read();
             if (done) {
-                if (this.buffer.length > 0) {
-                    const line = this.decoder.decode(this.buffer);
-                    this.buffer = new Uint8Array(0);
+                if (this._buffer.length > 0) {
+                    const line = this._decoder.decode(this._buffer);
+                    this._buffer = new Uint8Array(0);
                     return line;
                 }
                 return null;
             }
 
-            this.appendToBuffer(value);
+            this._appendToBuffer(value);
         }
     }
 
@@ -75,7 +77,7 @@ export class LineReader {
     }
 
     getRemainingBuffer(): Uint8Array {
-        return this.buffer;
+        return this._buffer;
     }
 }
 
@@ -211,12 +213,14 @@ export async function readResponse(
         headers.get('content-type') ?? '',
     );
 
+    const statusParsed = parseInt(status);
     return {
         proto,
-        status: parseInt(status),
+        status: statusParsed,
         statusText,
         headers,
         body: bodyStream,
+        ok: statusParsed >= 200 && statusParsed < 300,
         ...bodyParser,
     };
 }

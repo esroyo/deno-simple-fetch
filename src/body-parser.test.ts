@@ -61,6 +61,11 @@ Deno.test('Body Parser', async (t) => {
 
     await t.step('arrayBuffer', async () => {
         const data = new Uint8Array([1, 2, 3, 4, 5]);
+        const expectedArrayBuffer = data.buffer.slice(
+            data.byteOffset,
+            data.byteOffset + data.byteLength,
+        );
+
         const stream = new ReadableStream({
             start(controller) {
                 controller.enqueue(data);
@@ -74,6 +79,6 @@ Deno.test('Body Parser', async (t) => {
         );
 
         const result = await parser.arrayBuffer();
-        assertEquals(result, data);
+        assertEquals(result, expectedArrayBuffer);
     });
 });

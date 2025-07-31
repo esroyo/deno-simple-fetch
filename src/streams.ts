@@ -4,48 +4,32 @@ export function createTimeoutStream(
     stream: ReadableStream<Uint8Array>,
     options: TimeoutOptions = {},
 ): ReadableStream<Uint8Array> {
-    if (!options.timeout && !options.signal) {
+    if (!options.signal) {
         return stream;
     }
 
-    const signals: AbortSignal[] = [];
-
-    if (options.timeout && options.timeout > 0) {
-        signals.push(AbortSignal.timeout(options.timeout));
-    }
-
-    if (options.signal) {
-        signals.push(options.signal);
-    }
-
-    if (signals.length === 0) {
-        return stream;
-    }
-
-    const combinedSignal = signals.length === 1
-        ? signals[0]
-        : AbortSignal.any(signals);
+    const signal = options.signal;
 
     return new ReadableStream({
         async start(controller) {
             const reader = stream.getReader();
 
             const onAbort = () => {
-                const reason = combinedSignal.reason ||
+                const reason = signal.reason ||
                     new DOMException(
-                        'The operation timed out.',
-                        'TimeoutError',
+                        'The operation was aborted.',
+                        'AbortError',
                     );
                 reader.cancel(reason);
                 controller.error(reason);
             };
 
-            if (combinedSignal.aborted) {
+            if (signal.aborted) {
                 onAbort();
                 return;
             }
 
-            combinedSignal.addEventListener('abort', onAbort, { once: true });
+            signal.addEventListener('abort', onAbort, { once: true });
 
             try {
                 while (true) {
@@ -57,7 +41,7 @@ export function createTimeoutStream(
             } catch (error) {
                 controller.error(error);
             } finally {
-                combinedSignal.removeEventListener('abort', onAbort);
+                signal.removeEventListener('abort', onAbort);
                 reader.releaseLock();
             }
         },

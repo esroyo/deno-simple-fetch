@@ -7,7 +7,7 @@ Deno.test('HTTP Agent', async (t) => {
 
     try {
         await t.step('basic GET request', async () => {
-            const agent = createAgent(url);
+            using agent = createAgent(url);
             const response = await agent.send({
                 path: '/text',
                 method: 'GET',
@@ -16,11 +16,10 @@ Deno.test('HTTP Agent', async (t) => {
             assertEquals(response.status, 200);
             const text = await response.text();
             assertEquals(text, 'Hello, World!');
-            agent.close();
         });
 
         await t.step('JSON response', async () => {
-            const agent = createAgent(url);
+            using agent = createAgent(url);
             const response = await agent.send({
                 path: '/json',
                 method: 'GET',
@@ -29,11 +28,10 @@ Deno.test('HTTP Agent', async (t) => {
             assertEquals(response.status, 200);
             const json = await response.json();
             assertEquals(json.message, 'Hello, JSON!');
-            agent.close();
         });
 
         await t.step('POST request with body', async () => {
-            const agent = createAgent(url);
+            using agent = createAgent(url);
             const response = await agent.send({
                 path: '/echo',
                 method: 'POST',
@@ -44,11 +42,10 @@ Deno.test('HTTP Agent', async (t) => {
             assertEquals(response.status, 200);
             const echo = await response.json();
             assertEquals(echo.method, 'POST');
-            agent.close();
         });
 
         await t.step('custom headers', async () => {
-            const agent = createAgent(url);
+            using agent = createAgent(url);
             const response = await agent.send({
                 path: '/echo',
                 method: 'GET',
@@ -57,21 +54,6 @@ Deno.test('HTTP Agent', async (t) => {
 
             const echo = await response.json();
             assertEquals(echo.headers['x-custom-header'], 'test-value');
-            agent.close();
-        });
-
-        await t.step('timeout handling', async () => {
-            const agent = createAgent(url, { timeout: 100 });
-
-            await assertRejects(
-                () =>
-                    agent.send({
-                        path: '/slow',
-                        method: 'GET',
-                    }),
-                Error,
-            );
-            agent.close();
         });
     } finally {
         await server.shutdown();

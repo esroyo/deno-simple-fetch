@@ -1,5 +1,4 @@
 export interface TimeoutOptions {
-    timeout?: number;
     signal?: AbortSignal;
 }
 
@@ -16,10 +15,13 @@ export interface ResponseWithExtras {
     statusText: string;
     headers: Headers;
     body: ReadableStream<Uint8Array>;
+    ok: boolean;
+    bodyUsed: boolean;
     json(): Promise<any>;
     text(): Promise<string>;
     formData(): Promise<FormData>;
-    arrayBuffer(): Promise<Uint8Array>;
+    arrayBuffer(): Promise<ArrayBuffer>;
+    blob(): Promise<Blob>;
     conn?: Deno.Conn;
 }
 
@@ -30,4 +32,37 @@ export interface Agent {
     port: number;
     send(options: SendOptions): Promise<ResponseWithExtras>;
     readonly conn: Deno.Conn | undefined;
+}
+
+// Standard fetch API types
+export interface RequestInit {
+    method?: string;
+    headers?: HeadersInit;
+    body?: BodyInit;
+    signal?: AbortSignal;
+}
+
+export type BodyInit =
+    | string
+    | Uint8Array
+    | ReadableStream
+    | FormData
+    | URLSearchParams;
+export type HeadersInit = Headers | Record<string, string> | [string, string][];
+
+export interface Response {
+    readonly status: number;
+    readonly statusText: string;
+    readonly headers: Headers;
+    readonly ok: boolean;
+    readonly url: string;
+    readonly body: ReadableStream<Uint8Array>;
+    readonly bodyUsed: boolean;
+
+    // Body methods
+    json(): Promise<any>;
+    text(): Promise<string>;
+    formData(): Promise<FormData>;
+    arrayBuffer(): Promise<ArrayBuffer>;
+    blob(): Promise<Blob>;
 }
