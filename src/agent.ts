@@ -1,6 +1,7 @@
 import { Agent, SendOptions, TimeoutOptions } from './types.ts';
 import { ConnectionClosedError, UnexpectedEofError } from './errors.ts';
 import { readResponse, writeRequest } from './http-io.ts';
+import { createAbortablePromise } from './utils.ts';
 
 const PORT_MAP: Record<string, number> = {
     'http:': 80,
@@ -44,11 +45,19 @@ export function createAgent(
                 hostname,
             };
 
+            let connectPromiseForTimeout: Promise<Deno.Conn>;
+
             if (url.protocol === 'http:') {
-                connection = await Deno.connect(connectOptions);
+                connectPromiseForTimeout = Deno.connect(connectOptions);
             } else {
-                connection = await Deno.connectTls(connectOptions);
+                connectPromiseForTimeout = Deno.connectTls(connectOptions);
             }
+
+            // Apply timeout to connection if specified
+            connection = await createAbortablePromise(
+                connectPromiseForTimeout,
+                options,
+            );
 
             isConnected = true;
             isConnecting = false;
@@ -81,14 +90,22 @@ export function createAgent(
                 throw new Error('Connection not established');
             }
 
-            await writeRequest(connection, {
-                url: requestUrl.toString(),
-                method,
-                headers,
-                body,
-            });
+            // Apply timeout to write request
+            await createAbortablePromise(
+                writeRequest(connection, {
+                    url: requestUrl.toString(),
+                    method,
+                    headers,
+                    body,
+                }),
+                options,
+            );
 
-            const response = await readResponse(connection, options);
+            // Apply timeout to read response
+            const response = await createAbortablePromise(
+                readResponse(connection, options),
+                options,
+            );
 
             return {
                 ...response,
@@ -96,6 +113,11 @@ export function createAgent(
             };
         } catch (error) {
             if (error instanceof UnexpectedEofError) {
+                // Connection was closed, reset state
+                isConnected = false;
+                connection?.close();
+                connection = undefined;
+                connectPromise = Promise.withResolvers<void>();
                 throw new ConnectionClosedError();
             }
             throw error;
@@ -108,6 +130,7 @@ export function createAgent(
         connection?.close();
         connection = undefined;
         isConnected = false;
+        connectPromise = Promise.withResolvers<void>();
     }
 
     return {

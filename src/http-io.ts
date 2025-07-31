@@ -211,12 +211,14 @@ export async function readResponse(
         headers.get('content-type') ?? '',
     );
 
+    const statusParsed = parseInt(status);
     return {
         proto,
-        status: parseInt(status),
+        status: statusParsed,
         statusText,
         headers,
         body: bodyStream,
+        ok: statusParsed >= 200 && statusParsed < 300,
         ...bodyParser,
     };
 }

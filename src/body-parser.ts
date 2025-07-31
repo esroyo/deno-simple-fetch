@@ -5,14 +5,26 @@ export function createBodyParser(
     json(): Promise<any>;
     text(): Promise<string>;
     formData(): Promise<FormData>;
-    arrayBuffer(): Promise<Uint8Array>;
+    arrayBuffer(): Promise<ArrayBuffer>;
+    blob(): Promise<Blob>;
+    bodyUsed: boolean;
 } {
-    let cachedArrayBuffer: Uint8Array | undefined;
+    let bodyUsed = false;
+    let cachedArrayBuffer: ArrayBuffer | undefined;
 
-    async function getArrayBuffer(): Promise<Uint8Array> {
+    function assertNotUsed() {
+        if (bodyUsed) {
+            throw new TypeError('body stream already read');
+        }
+        bodyUsed = true;
+    }
+
+    async function getArrayBuffer(): Promise<ArrayBuffer> {
         if (cachedArrayBuffer) {
             return cachedArrayBuffer;
         }
+
+        assertNotUsed();
 
         let totalLength = 0;
         const chunks: Uint8Array[] = await Array.fromAsync(stream, (chunk) => {
@@ -20,17 +32,23 @@ export function createBodyParser(
             return chunk;
         });
 
-        const result = new Uint8Array(totalLength);
+        const arrayBuffer = new ArrayBuffer(totalLength);
+        const view = new Uint8Array(arrayBuffer);
+
         let offset = 0;
         for (const chunk of chunks) {
-            result.set(chunk, offset);
+            view.set(chunk, offset);
             offset += chunk.length;
         }
 
-        return cachedArrayBuffer = result;
+        return cachedArrayBuffer = arrayBuffer;
     }
 
     return {
+        get bodyUsed(): boolean {
+            return bodyUsed;
+        },
+
         async json(): Promise<any> {
             const buffer = await getArrayBuffer();
             const text = new TextDecoder().decode(buffer);
@@ -62,8 +80,15 @@ export function createBodyParser(
             }
         },
 
-        async arrayBuffer(): Promise<Uint8Array> {
-            return await getArrayBuffer();
+        async blob(): Promise<Blob> {
+            const buffer = await getArrayBuffer();
+            return new Blob([buffer], {
+                type: contentType || 'application/octet-stream',
+            });
+        },
+
+        async arrayBuffer(): Promise<ArrayBuffer> {
+            return getArrayBuffer();
         },
     };
 }
