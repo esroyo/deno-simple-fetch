@@ -68,4 +68,5 @@ export interface Response {
     formData(): Promise<FormData>;
     arrayBuffer(): Promise<ArrayBuffer>;
     blob(): Promise<Blob>;
+    clone(): Response;
 }

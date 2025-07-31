@@ -215,6 +215,47 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
             const text = await response.text();
             assertEquals(text, 'Redirecting to /redirected-target');
         });
+
+        await t.step('response clone method', async () => {
+            using client = new HttpClient(url);
+            const response = await client.fetch('/json');
+
+            // Clone the response
+            const clonedResponse = response.clone();
+
+            // Both responses should have the same properties
+            assertEquals(response.status, clonedResponse.status);
+            assertEquals(response.statusText, clonedResponse.statusText);
+            assertEquals(response.ok, clonedResponse.ok);
+            assertEquals(response.url, clonedResponse.url);
+
+            // Should be able to read from both independently
+            const originalJson = await response.json();
+            const clonedJson = await clonedResponse.json();
+
+            assertEquals(originalJson.message, 'Hello, JSON!');
+            assertEquals(clonedJson.message, 'Hello, JSON!');
+
+            // Both should now be marked as used
+            assertEquals(response.bodyUsed, true);
+            assertEquals(clonedResponse.bodyUsed, true);
+        });
+
+        await t.step('clone after body is used should throw', async () => {
+            using client = new HttpClient(url);
+            const response = await client.fetch('/text');
+
+            // Read the body first
+            await response.text();
+            assertEquals(response.bodyUsed, true);
+
+            // Trying to clone after body is used should throw
+            await assertRejects(
+                async () => Promise.resolve(response.clone()),
+                TypeError,
+                'body stream already read',
+            );
+        });
     } finally {
         await server.shutdown();
     }

@@ -1,7 +1,7 @@
 import type {
     Agent,
     RequestInit,
-    Response,
+    Response as CustomResponse,
     ResponseWithExtras,
     TimeoutOptions,
 } from './types.ts';
@@ -22,7 +22,7 @@ export class HttpClient {
     async fetch(
         input: string | URL,
         init: RequestInit = {},
-    ): Promise<Response> {
+    ): Promise<CustomResponse> {
         const url = typeof input === 'string' ? input : input.toString();
         const {
             method = 'GET',
@@ -131,19 +131,104 @@ export class HttpClient {
     protected createResponse(
         response: ResponseWithExtras,
         url: string,
-    ): Response {
+    ): CustomResponse {
         // Track if body has been used for any of the response methods
         let bodyUsed = false;
+        
+        // Immediately tee the stream when creating the response to enable cloning
+        const [stream1, stream2] = response.body.tee();
+        let currentBody = stream1;
+        let cloneBody = stream2;
 
-        // Create wrapped methods that track usage
-        const wrapBodyMethod = <T>(method: () => Promise<T>) => {
-            return async (): Promise<T> => {
-                if (bodyUsed) {
-                    throw new TypeError('body stream already read');
-                }
-                bodyUsed = true;
-                return await method();
+        // Create body parser for the current stream
+        const createBodyParser = (stream: ReadableStream<Uint8Array>) => {
+            let streamUsed = false;
+            
+            const wrapMethod = <T>(method: () => Promise<T>) => {
+                return async (): Promise<T> => {
+                    if (streamUsed) {
+                        throw new TypeError('body stream already read');
+                    }
+                    streamUsed = true;
+                    bodyUsed = true;
+                    
+                    // Read the stream manually
+                    const chunks: Uint8Array[] = [];
+                    const reader = stream.getReader();
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            chunks.push(value);
+                        }
+                    } finally {
+                        reader.releaseLock();
+                    }
+                    
+                    // Combine chunks
+                    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+                    const combined = new Uint8Array(totalLength);
+                    let offset = 0;
+                    for (const chunk of chunks) {
+                        combined.set(chunk, offset);
+                        offset += chunk.length;
+                    }
+                    
+                    return method.call({ 
+                        buffer: combined,
+                        contentType: response.headers.get('content-type') ?? ''
+                    });
+                };
             };
+
+            return {
+                json: wrapMethod(async function(this: { buffer: Uint8Array }) {
+                    const text = new TextDecoder().decode(this.buffer);
+                    return JSON.parse(text);
+                }),
+                text: wrapMethod(async function(this: { buffer: Uint8Array }) {
+                    return new TextDecoder().decode(this.buffer);
+                }),
+                arrayBuffer: wrapMethod(async function(this: { buffer: Uint8Array }) {
+                    return this.buffer.buffer.slice(
+                        this.buffer.byteOffset,
+                        this.buffer.byteOffset + this.buffer.byteLength
+                    );
+                }),
+                blob: wrapMethod(async function(this: { buffer: Uint8Array; contentType: string }) {
+                    return new Blob([this.buffer], { 
+                        type: this.contentType || 'application/octet-stream' 
+                    });
+                }),
+                formData: wrapMethod(async function(this: { buffer: Uint8Array; contentType: string }) {
+                    const text = new TextDecoder().decode(this.buffer);
+                    if (this.contentType.includes('application/x-www-form-urlencoded')) {
+                        const formData = new FormData();
+                        const params = new URLSearchParams(text);
+                        for (const [key, value] of params) {
+                            formData.append(key, value);
+                        }
+                        return formData;
+                    }
+                    throw new Error('Unsupported content type for form data');
+                })
+            };
+        };
+
+        const bodyParser = createBodyParser(currentBody);
+
+        const clone = (): CustomResponse => {
+            if (bodyUsed) {
+                throw new TypeError('body stream already read');
+            }
+
+            // Create new response with the clone stream
+            const clonedResponse: ResponseWithExtras = {
+                ...response,
+                body: cloneBody,
+            };
+
+            return this.createResponse(clonedResponse, url);
         };
 
         return {
@@ -152,16 +237,17 @@ export class HttpClient {
             headers: response.headers,
             ok: response.ok,
             url,
-            body: response.body,
+            body: currentBody,
             get bodyUsed() {
                 return bodyUsed;
             },
-            json: wrapBodyMethod(() => response.json()),
-            text: wrapBodyMethod(() => response.text()),
-            formData: wrapBodyMethod(() => response.formData()),
-            arrayBuffer: wrapBodyMethod(() => response.arrayBuffer()),
-            blob: wrapBodyMethod(() => response.blob()),
-        };
+            json: bodyParser.json,
+            text: bodyParser.text,
+            formData: bodyParser.formData,
+            arrayBuffer: bodyParser.arrayBuffer,
+            blob: bodyParser.blob,
+            clone,
+        } as CustomResponse;
     }
 }
 
