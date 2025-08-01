@@ -76,7 +76,7 @@ export function createChunkedDecodingStream(): TransformStream<
 > {
     const decoder = new TextDecoder();
     let buffer = new Uint8Array(0);
-    let state: 'size' | 'data' | 'trailer' = 'size';
+    let state: 'size' | 'data' | 'after_chunk' | 'trailer' | 'done' = 'size';
     let chunkSize = 0;
     let chunkBytesRead = 0;
 
@@ -109,13 +109,16 @@ export function createChunkedDecodingStream(): TransformStream<
         transform(chunk, controller) {
             appendToBuffer(chunk);
 
-            while (buffer.length > 0) {
+            while (buffer.length > 0 && state !== 'done') {
                 if (state === 'size') {
                     const sizeLine = readLine();
-                    if (sizeLine === null) break;
+                    if (sizeLine === null) break; // Need more data
 
-                    chunkSize = parseInt(sizeLine, 16);
+                    const sizeStr = sizeLine.trim();
+                    chunkSize = parseInt(sizeStr, 16);
+
                     if (chunkSize === 0) {
+                        // Final chunk, read trailers
                         state = 'trailer';
                         continue;
                     }
@@ -127,31 +130,61 @@ export function createChunkedDecodingStream(): TransformStream<
                     const bytesAvailable = Math.min(bytesNeeded, buffer.length);
 
                     if (bytesAvailable > 0) {
-                        controller.enqueue(buffer.slice(0, bytesAvailable));
+                        const dataChunk = buffer.slice(0, bytesAvailable);
+                        controller.enqueue(dataChunk);
                         buffer = buffer.slice(bytesAvailable);
                         chunkBytesRead += bytesAvailable;
                     }
 
                     if (chunkBytesRead === chunkSize) {
-                        // Skip trailing CRLF
-                        if (
-                            buffer.length >= 2 && buffer[0] === 0x0D &&
-                            buffer[1] === 0x0A
-                        ) {
-                            buffer = buffer.slice(2);
-                        }
-                        state = 'size';
+                        // We've read all the chunk data, now expect CRLF
+                        state = 'after_chunk';
                     } else {
+                        break; // Need more data
+                    }
+                } else if (state === 'after_chunk') {
+                    // Expect CRLF after chunk data
+                    if (
+                        buffer.length >= 2 && buffer[0] === 0x0D &&
+                        buffer[1] === 0x0A
+                    ) {
+                        buffer = buffer.slice(2);
+                        state = 'size'; // Go back to reading next chunk size
+                    } else if (buffer.length === 1 && buffer[0] === 0x0D) {
+                        // We have CR but need LF, wait for more data
                         break;
+                    } else if (buffer.length === 0) {
+                        // CRLF might come in next chunk
+                        break;
+                    } else {
+                        // Malformed chunked data
+                        controller.error(
+                            new Error('Expected CRLF after chunk data'),
+                        );
+                        return;
                     }
                 } else if (state === 'trailer') {
                     const trailerLine = readLine();
-                    if (trailerLine === null) break;
+                    if (trailerLine === null) break; // Need more data
+
                     if (trailerLine === '') {
+                        // End of trailers
+                        state = 'done';
                         controller.terminate();
                         return;
                     }
+                    // Continue reading trailer headers (ignore them for now)
                 }
+            }
+        },
+
+        flush(controller) {
+            // If we have any pending data in an incomplete state, that's an error
+            if (
+                state === 'data' && chunkBytesRead > 0 &&
+                chunkBytesRead < chunkSize
+            ) {
+                controller.error(new Error('Incomplete chunked data'));
             }
         },
     });

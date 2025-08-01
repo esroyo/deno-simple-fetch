@@ -2,7 +2,8 @@
   "version": "4",
   "specifiers": {
     "jsr:@std/assert@1.0.6": "1.0.6",
-    "jsr:@std/internal@^1.0.4": "1.0.9"
+    "jsr:@std/internal@^1.0.4": "1.0.9",
+    "npm:generic-pool@*": "3.9.0"
   },
   "jsr": {
     "@std/assert@1.0.6": {
@@ -13,6 +14,11 @@
     },
     "@std/internal@1.0.9": {
       "integrity": "bdfb97f83e4db7a13e8faab26fb1958d1b80cc64366501af78a0aee151696eb8"
+    }
+  },
+  "npm": {
+    "generic-pool@3.9.0": {
+      "integrity": "sha512-hymDOu5B53XvN4QT9dBmZxPX4CWhBPPLguTZ9MMFeFa/Kg0xWVfylOVNlJji/E7yTZWFd/q9GO5TxDLq156D7g=="
     }
   },
   "remote": {

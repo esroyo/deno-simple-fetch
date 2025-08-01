@@ -10,7 +10,6 @@ export function createBodyParser(
     bodyUsed: boolean;
 } {
     let bodyUsed = false;
-    let cachedArrayBuffer: ArrayBuffer | undefined;
 
     function assertNotUsed() {
         if (bodyUsed) {
@@ -20,10 +19,6 @@ export function createBodyParser(
     }
 
     async function getArrayBuffer(): Promise<ArrayBuffer> {
-        if (cachedArrayBuffer) {
-            return cachedArrayBuffer;
-        }
-
         assertNotUsed();
 
         let totalLength = 0;
@@ -41,7 +36,7 @@ export function createBodyParser(
             offset += chunk.length;
         }
 
-        return cachedArrayBuffer = arrayBuffer;
+        return arrayBuffer;
     }
 
     return {

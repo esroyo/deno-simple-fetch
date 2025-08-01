@@ -1,4 +1,4 @@
-import { Agent, SendOptions, TimeoutOptions } from './types.ts';
+import { Agent, ResponseWithExtras, SendOptions } from './types.ts';
 import { ConnectionClosedError, UnexpectedEofError } from './errors.ts';
 import { readResponse, writeRequest } from './http-io.ts';
 import { createAbortablePromise } from './utils.ts';
@@ -10,12 +10,15 @@ const PORT_MAP: Record<string, number> = {
 
 export function createAgent(
     baseUrl: string,
-    options: TimeoutOptions = {},
 ): Agent {
-    let isConnected = false;
-    let isConnecting = false;
     let connection: Deno.Conn | undefined;
-    let connectPromise = Promise.withResolvers<void>();
+    let isBusy = false;
+    let lastController: AbortController | undefined;
+    let whenIdle: Pick<PromiseWithResolvers<void>, 'promise' | 'resolve'> = {
+        promise: Promise.resolve(),
+        resolve: () => {},
+    };
+    let lastUsedTime = Date.now();
 
     const url = new URL(baseUrl);
 
@@ -27,110 +30,140 @@ export function createAgent(
 
     const hostname = url.hostname;
     const port = url.port ? parseInt(url.port) : PORT_MAP[url.protocol];
+    const isSecure = url.protocol === 'https:';
 
     if (port === undefined) {
         throw new Error(`Unexpected protocol: ${url.protocol}`);
     }
 
-    const connect = async (): Promise<void> => {
-        if (isConnected) return;
-        if (isConnecting) return connectPromise.promise;
+    const connect = async () => {
+        if (connection) return;
 
-        isConnecting = true;
+        const connectOptions: Deno.ConnectOptions = {
+            port,
+            transport: 'tcp',
+            hostname,
+        };
 
-        try {
-            const connectOptions: Deno.ConnectOptions = {
-                port,
-                transport: 'tcp',
-                hostname,
-            };
-
-            let connectPromiseForTimeout: Promise<Deno.Conn>;
-
-            if (url.protocol === 'http:') {
-                connectPromiseForTimeout = Deno.connect(connectOptions);
-            } else {
-                connectPromiseForTimeout = Deno.connectTls(connectOptions);
-            }
-
-            // Apply abort signal to connection if specified
-            connection = await createAbortablePromise(
-                connectPromiseForTimeout,
-                options,
-            );
-
-            isConnected = true;
-            isConnecting = false;
-            connectPromise.resolve();
-        } catch (error) {
-            isConnecting = false;
-            connectPromise.reject(error);
-            throw error;
-        }
+        connection =
+            await (isSecure
+                ? Deno.connectTls(connectOptions)
+                : Deno.connect(connectOptions));
     };
 
-    let isSending = false;
-
-    async function send(sendOptions: SendOptions) {
-        if (isSending) {
-            throw new Error('Cannot send HTTP requests concurrently');
+    async function send(sendOptions: SendOptions): Promise<ResponseWithExtras> {
+        if (isBusy) {
+            throw new Error(
+                'Agent is busy - use agent pool for concurrent requests',
+            );
         }
 
-        isSending = true;
+        isBusy = true;
+        whenIdle = Promise.withResolvers<void>();
+        lastUsedTime = Date.now();
+        lastController = new AbortController();
 
         try {
-            if (!isConnected) {
+            if (!connection) {
                 await connect();
             }
 
-            const { path, method, headers, body } = sendOptions;
-            const requestUrl = new URL(path, url);
+            const {
+                url: requestUrl,
+                method,
+                headers,
+                body,
+                signal: requestSignal,
+            } = sendOptions;
+            const fullUrl = new URL(requestUrl, baseUrl);
+            if (
+                URL.canParse(requestUrl) &&
+                !requestUrl.startsWith(fullUrl.origin)
+            ) {
+                throw new Error(
+                    `Request to send "${requestUrl}" on a ${baseUrl} connection`,
+                );
+            }
 
             if (!connection) {
                 throw new Error('Connection not established');
             }
 
-            // Apply abort signal to write request
+            const signal = requestSignal
+                ? AbortSignal.any([requestSignal, lastController.signal])
+                : lastController.signal;
+
             await createAbortablePromise(
                 writeRequest(connection, {
-                    url: requestUrl.toString(),
+                    url: fullUrl.toString(),
                     method,
                     headers,
                     body,
                 }),
-                options,
+                { signal },
             );
 
-            // Apply abort signal to read response
-            const response = await createAbortablePromise(
-                readResponse(connection, options),
-                options,
-            );
-
-            return {
-                ...response,
-                conn: connection,
+            let shouldCloseAfterBody = false;
+            const onDone = () => {
+                if (shouldCloseAfterBody) {
+                    connection?.close(); // Closing only after stream has been consumed
+                    connection = undefined;
+                }
+                lastUsedTime = Date.now();
+                isBusy = false;
+                lastController = undefined;
+                whenIdle.resolve();
             };
+
+            const isHeadRequest = method.toUpperCase() === 'HEAD';
+            const shouldIgnoreBody = (status: number) =>
+                isHeadRequest || (status >= 100 && status < 200) ||
+                status === 204 || status === 304;
+
+            const response = await createAbortablePromise(
+                readResponse(connection, shouldIgnoreBody, onDone),
+                { signal },
+            ) as ResponseWithExtras;
+            response.url = fullUrl.toString();
+
+            signal.addEventListener('abort', (ev) => {
+                response.body.cancel((ev.target as AbortSignal)?.reason);
+            });
+
+            // Important: For HTTP/1.1, connection can be reused if we can determine
+            // when the response body ends (Content-Length or chunked encoding)
+            const hasContentLength = response.headers.has('content-length');
+            const isChunked = response.headers.get('transfer-encoding')
+                ?.includes('chunked');
+
+            // Without content-length or chunked encoding, we can't know when body ends
+            // So we must close the connection after this response
+            shouldCloseAfterBody = !hasContentLength && !isChunked;
+
+            return response;
         } catch (error) {
+            lastUsedTime = Date.now();
+            isBusy = false;
+            lastController = undefined;
+            whenIdle.resolve();
             if (error instanceof UnexpectedEofError) {
-                // Connection was closed, reset state
-                isConnected = false;
                 connection?.close();
                 connection = undefined;
-                connectPromise = Promise.withResolvers<void>();
                 throw new ConnectionClosedError();
             }
             throw error;
-        } finally {
-            isSending = false;
         }
     }
 
     function close() {
+        if (lastController) {
+            lastController.abort();
+            lastController = undefined;
+        }
         connection?.close();
         connection = undefined;
-        isConnected = false;
-        connectPromise = Promise.withResolvers<void>();
+        isBusy = false;
+        whenIdle.resolve();
     }
 
     return {
@@ -139,8 +172,14 @@ export function createAgent(
         hostname,
         port,
         send,
-        get conn(): Deno.Conn | undefined {
-            return connection;
+        whenIdle(): Promise<void> {
+            return whenIdle.promise;
+        },
+        get isIdle(): boolean {
+            return !isBusy;
+        },
+        get lastUsed(): number {
+            return lastUsedTime;
         },
     };
 }

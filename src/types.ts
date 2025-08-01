@@ -3,10 +3,11 @@ export interface TimeoutOptions {
 }
 
 export interface SendOptions {
-    path: string;
+    url: string;
     method: string;
     headers?: Headers;
     body?: string | Uint8Array | ReadableStream;
+    signal?: AbortSignal;
 }
 
 export interface ResponseWithExtras {
@@ -22,16 +23,34 @@ export interface ResponseWithExtras {
     formData(): Promise<FormData>;
     arrayBuffer(): Promise<ArrayBuffer>;
     blob(): Promise<Blob>;
-    conn?: Deno.Conn;
+    url: string;
 }
 
+// Single-connection agent (simple, blocking)
 export interface Agent {
     [Symbol.dispose](): void;
     close(): void;
     hostname: string;
     port: number;
     send(options: SendOptions): Promise<ResponseWithExtras>;
-    readonly conn: Deno.Conn | undefined;
+    whenIdle(): Promise<void>;
+    readonly isIdle: boolean;
+    readonly lastUsed: number;
+}
+
+// Agent pool configuration
+export interface AgentPoolOptions {
+    maxAgents?: number;
+    idleTimeout?: number;
+}
+
+// Agent pool interface (handles concurrency)
+export interface AgentPool {
+    [Symbol.asyncDispose](): Promise<void>;
+    close(): Promise<void>;
+    hostname: string;
+    port: number;
+    send(options: SendOptions): Promise<ResponseWithExtras>;
 }
 
 // Standard fetch API types

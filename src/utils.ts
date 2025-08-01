@@ -1,7 +1,7 @@
 import { TimeoutOptions } from './types.ts';
 
-export function createAbortablePromise<T>(
-    promise: Promise<T>,
+export function createAbortablePromise<U extends Promise<any>, T = Awaited<U>>(
+    promise: U,
     options: TimeoutOptions = {},
 ): Promise<T> {
     const { signal } = options;

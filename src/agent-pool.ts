@@ -1,0 +1,87 @@
+import { createPool } from 'npm:generic-pool';
+import {
+    Agent,
+    AgentPool,
+    AgentPoolOptions,
+    ResponseWithExtras,
+    SendOptions,
+} from './types.ts';
+import { createAgent } from './agent.ts';
+
+export function createAgentPool(
+    baseUrl: string,
+    options: AgentPoolOptions = {},
+): AgentPool {
+    const {
+        maxAgents = 10,
+        idleTimeout = 30_000,
+    } = options;
+
+    const poolUrl = new URL(baseUrl);
+
+    if (poolUrl.protocol !== 'http:' && poolUrl.protocol !== 'https:') {
+        throw new Error(
+            `Unsupported protocol: ${poolUrl.protocol}. Only http: and https: are supported.`,
+        );
+    }
+
+    const pool = createPool<Agent>({
+        async create() {
+            return createAgent(baseUrl);
+        },
+        async destroy(agent) {
+            agent.close();
+        },
+    }, {
+        max: Math.max(1, maxAgents),
+        min: 0,
+        idleTimeoutMillis: idleTimeout,
+        evictionRunIntervalMillis: Math.min(idleTimeout, 30_000),
+    });
+    let releaseFns: Array<(close?: boolean) => Promise<void>> = [];
+
+    async function send(sendOptions: SendOptions): Promise<ResponseWithExtras> {
+        let agent: Agent | undefined;
+        let released = false;
+        const releaseFn = async (forceClose = false) => {
+            if (!agent || released) {
+                return;
+            }
+            released = true;
+            releaseFns = releaseFns.filter((r) => r !== releaseFn);
+            if (forceClose) {
+                agent.close();
+            }
+            if (pool.isBorrowedResource(agent)) {
+                await pool.release(agent);
+            }
+        };
+        releaseFns.push(releaseFn);
+        try {
+            agent = await pool.acquire();
+            const responsePromise = agent.send(sendOptions);
+            responsePromise.catch(() => releaseFn());
+            agent.whenIdle().then(() => releaseFn());
+            return responsePromise;
+        } catch (error) {
+            await releaseFn();
+            throw error;
+        }
+    }
+
+    async function close() {
+        await Promise.all(releaseFns.map((release) => release(true)));
+        await pool.drain();
+        await pool.clear();
+    }
+
+    return {
+        [Symbol.asyncDispose]: close,
+        close,
+        hostname: poolUrl.hostname,
+        port: poolUrl.port
+            ? parseInt(poolUrl.port)
+            : (poolUrl.protocol === 'https:' ? 443 : 80),
+        send,
+    };
+}

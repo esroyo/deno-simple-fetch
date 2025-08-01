@@ -1,4 +1,3 @@
-import { createAbortablePromise } from './utils.ts';
 import {
     connectionToReadableStream,
     createChunkedDecodingStream,
@@ -6,7 +5,7 @@ import {
 } from './streams.ts';
 import { UnexpectedEofError } from './errors.ts';
 import { createBodyParser } from './body-parser.ts';
-import { ResponseWithExtras, TimeoutOptions } from './types.ts';
+import { ResponseWithExtras } from './types.ts';
 
 // Line reader for HTTP headers using ReadableStream
 export class LineReader {
@@ -120,27 +119,29 @@ export async function writeRequest(
 
 export async function readResponse(
     conn: Deno.Conn,
-    options: TimeoutOptions = {},
-): Promise<ResponseWithExtras> {
+    shouldIgnoreBody: (status: number) => boolean,
+    onDone?: () => void,
+): Promise<Omit<ResponseWithExtras, 'url'>> {
     const lineReader = new LineReader(
         connectionToReadableStream(conn).getReader(),
     );
-    const statusLine = await createAbortablePromise(
-        lineReader.readLine(),
-        options,
-    );
+    const statusLine = await lineReader.readLine();
     if (statusLine === null) {
         throw new UnexpectedEofError();
     }
 
     const [proto, status, ...statusTextParts] = statusLine.split(' ');
     const statusText = statusTextParts.join(' ');
+    const statusParsed = parseInt(status);
 
-    const headers = await createAbortablePromise(
-        lineReader.readHeaders(),
-        options,
-    );
+    const headers = await lineReader.readHeaders();
 
+    const ignoreBody = shouldIgnoreBody(statusParsed);
+    if (ignoreBody) {
+        headers.delete('content-length');
+        headers.delete('transfer-encoding');
+        headers.delete('content-encoding');
+    }
     const contentLength = headers.get('content-length');
     const isChunked = headers.get('transfer-encoding')?.includes('chunked');
     const contentEncoding = headers.get('content-encoding');
@@ -149,6 +150,11 @@ export async function readResponse(
     const remainingBuffer = lineReader.getRemainingBuffer();
     let bodyStream: ReadableStream<Uint8Array> = new ReadableStream({
         async start(controller) {
+            if (ignoreBody) {
+                controller.close();
+                onDone?.();
+                return;
+            }
             if (remainingBuffer.length > 0) {
                 controller.enqueue(remainingBuffer);
             }
@@ -161,7 +167,12 @@ export async function readResponse(
                 controller.close();
             } catch (error) {
                 controller.error(error);
+            } finally {
+                onDone?.();
             }
+        },
+        cancel(_reason) {
+            onDone?.();
         },
     }, { highWaterMark: 0 });
 
@@ -208,21 +219,19 @@ export async function readResponse(
         }
     }
 
-    const bodyParser = createBodyParser(
+    const bodyProps = createBodyParser(
         bodyStream,
         headers.get('content-type') ?? '',
     );
 
-    const statusParsed = parseInt(status);
-    return {
+    return Object.assign(bodyProps, {
         proto,
         status: statusParsed,
         statusText,
         headers,
         body: bodyStream,
         ok: statusParsed >= 200 && statusParsed < 300,
-        ...bodyParser,
-    };
+    });
 }
 
 function setupRequestBody(
