@@ -1,30 +1,12 @@
-import type {
-    AgentPool,
-    RequestInit,
-    Response,
-    ResponseWithExtras,
-    SendOptions,
-    StreamingOptions,
-} from './types.ts';
+import type { AgentPool, RequestInit, SendOptions } from './types.ts';
 import { createAgentPool } from './agent-pool.ts';
 
 export class HttpClient {
     protected _agentPools: Record<string, AgentPool> = {};
-    protected _streamingOptions: StreamingOptions;
-
-    constructor(streamingOptions: StreamingOptions = {}) {
-        this._streamingOptions = {
-            maxResponseSize: 100 * 1024 * 1024, // 100MB
-            maxChunkSize: 64 * 1024, // 64KB
-            backpressureThreshold: 1024 * 1024, // 1MB
-            enableBackpressure: true,
-            ...streamingOptions,
-        };
-    }
 
     async send(
-        options: SendOptions & StreamingOptions,
-    ): Promise<ResponseWithExtras> {
+        options: SendOptions,
+    ): Promise<Response> {
         // Use existing pool or create temporary one
         const agentPool = this._getOrCreateAgentPool(options.url);
         const response = await agentPool.send(options);

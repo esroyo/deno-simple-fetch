@@ -4,8 +4,6 @@ import {
     createChunkedEncodingStream,
 } from './streams.ts';
 import { UnexpectedEofError } from './errors.ts';
-import { createBodyParser } from './body-parser.ts';
-import { ResponseWithExtras, StreamingOptions } from './types.ts';
 
 // Line reader for HTTP headers using ReadableStream
 export class LineReader {
@@ -120,9 +118,8 @@ export async function writeRequest(
 export async function readResponse(
     conn: Deno.Conn,
     shouldIgnoreBody: (status: number) => boolean,
-    streamingOptions: StreamingOptions = {},
     onDone?: () => void,
-): Promise<Omit<ResponseWithExtras, 'url'>> {
+): Promise<Response> {
     const lineReader = new LineReader(
         connectionToReadableStream(conn).getReader(),
     );
@@ -131,7 +128,7 @@ export async function readResponse(
         throw new UnexpectedEofError();
     }
 
-    const [proto, status, ...statusTextParts] = statusLine.split(' ');
+    const [_proto, status, ...statusTextParts] = statusLine.split(' ');
     const statusText = statusTextParts.join(' ');
     const statusParsed = parseInt(status);
 
@@ -220,20 +217,14 @@ export async function readResponse(
         }
     }
 
-    const bodyProps = createBodyParser(
-        bodyStream,
-        headers.get('content-type') ?? '',
-        streamingOptions,
-    );
-
-    return Object.assign(bodyProps, {
-        proto,
+    // Create standard Response object
+    const response = new Response(bodyStream, {
         status: statusParsed,
         statusText,
         headers,
-        body: bodyStream,
-        ok: statusParsed >= 200 && statusParsed < 300,
     });
+
+    return response;
 }
 
 function setupRequestBody(

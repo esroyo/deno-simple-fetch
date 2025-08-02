@@ -1,12 +1,5 @@
 import { createPool } from 'npm:generic-pool';
-import {
-    Agent,
-    AgentPool,
-    AgentPoolOptions,
-    ResponseWithExtras,
-    SendOptions,
-    StreamingOptions,
-} from './types.ts';
+import { Agent, AgentPool, AgentPoolOptions, SendOptions } from './types.ts';
 import { createAgent } from './agent.ts';
 
 export function createAgentPool(
@@ -42,8 +35,8 @@ export function createAgentPool(
     let releaseFns: Array<(close?: boolean) => Promise<void>> = [];
 
     async function send(
-        sendOptions: SendOptions & StreamingOptions,
-    ): Promise<ResponseWithExtras> {
+        sendOptions: SendOptions,
+    ): Promise<Response> {
         let agent: Agent | undefined;
         let released = false;
         const releaseFn = async (forceClose = false) => {

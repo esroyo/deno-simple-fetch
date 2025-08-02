@@ -1,10 +1,5 @@
-import {
-    Agent,
-    ResponseWithExtras,
-    SendOptions,
-    StreamingOptions,
-} from './types.ts';
-import { ConnectionClosedError, UnexpectedEofError } from './errors.ts';
+import { Agent, SendOptions } from './types.ts';
+import { ConnectionClosedError } from './errors.ts';
 import { readResponse, writeRequest } from './http-io.ts';
 import { createAbortablePromise } from './utils.ts';
 
@@ -60,8 +55,8 @@ export function createAgent(
     };
 
     async function send(
-        sendOptions: SendOptions & StreamingOptions,
-    ): Promise<ResponseWithExtras> {
+        sendOptions: SendOptions,
+    ): Promise<Response> {
         if (isBusy) {
             throw new Error(
                 'Agent is busy - use agent pool for concurrent requests',
@@ -139,14 +134,18 @@ export function createAgent(
                 status === 204 || status === 304;
 
             const response = await createAbortablePromise(
-                readResponse(connection, shouldIgnoreBody, sendOptions, onDone),
+                readResponse(connection, shouldIgnoreBody, onDone),
                 { signal },
-            ) as ResponseWithExtras;
-            response.url = fullUrl.toString();
+            );
+            Object.defineProperty(response, 'url', {
+                value: fullUrl.toString(),
+                writable: false,
+                configurable: true,
+            });
 
             const responseRef = new WeakRef(response);
             signal.addEventListener('abort', (ev) => {
-                responseRef.deref()?.body.cancel(
+                responseRef.deref()?.body?.cancel(
                     (ev.target as AbortSignal)?.reason,
                 );
             });

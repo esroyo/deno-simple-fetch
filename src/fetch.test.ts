@@ -155,7 +155,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
             await assertRejects(
                 () => response.json(),
                 TypeError,
-                'body stream already read',
+                'Body already consumed',
             );
         });
 
@@ -238,8 +238,12 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
             });
 
             // Access raw stream
-            const reader = response.body.getReader();
+            const reader = response.body?.getReader();
             const chunks: Uint8Array[] = [];
+
+            if (!reader) {
+                throw new Error('Unexpected missing body');
+            }
 
             try {
                 while (true) {
@@ -260,9 +264,7 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
                 ),
             );
             assertEquals(text, 'Hello, World!');
-
-            // bodyUsed should still be false since we used the stream directly
-            assertEquals(response.bodyUsed, false);
+            assertEquals(response.bodyUsed, true);
         });
 
         await t.step('chunked response handling', async () => {
@@ -545,7 +547,7 @@ Deno.test('Fetch API', async (t) => {
             await assertRejects(
                 () => response.json(),
                 TypeError,
-                'body stream already read',
+                'Body already consumed',
             );
         });
 

@@ -1,9 +1,8 @@
 import { assertEquals, assertRejects } from './test-utils.ts';
-import { createFetch, HttpClient } from './fetch.ts';
+import { HttpClient } from './fetch.ts';
 import { createTestServer } from './test-utils.ts';
 import { createAgent } from './agent.ts';
 import { createAgentPool } from './agent-pool.ts';
-import { createBodyParser } from './body-parser.ts';
 import {
     createChunkedDecodingStream,
     createChunkedEncodingStream,
@@ -157,30 +156,6 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
             }
         });
 
-        await t.step('malformed response handling', async () => {
-            // This would require a special test server that sends malformed responses
-            // For now, we'll test the parser components directly
-
-            const malformedChunks = new ReadableStream({
-                start(controller) {
-                    controller.enqueue(
-                        new TextEncoder().encode('invalid json'),
-                    );
-                    controller.close();
-                },
-            });
-
-            const bodyParser = createBodyParser(
-                malformedChunks,
-                'application/json',
-            );
-
-            await assertRejects(
-                () => bodyParser.json(),
-                SyntaxError,
-            );
-        });
-
         await t.step('very large response handling', async () => {
             // Create a test server that returns large responses
             const { server: largeServer, url: largeUrl } =
@@ -307,137 +282,6 @@ Deno.test('Performance and Stress Tests', async (t) => {
     } finally {
         await server.shutdown();
     }
-});
-
-// Comprehensive body parsing tests
-Deno.test('Extended Body Parser Tests', async (t) => {
-    await t.step('empty response body', async () => {
-        const emptyStream = new ReadableStream({
-            start(controller) {
-                controller.close();
-            },
-        });
-
-        const parser = createBodyParser(emptyStream, 'text/plain');
-
-        const text = await parser.text();
-        assertEquals(text, '');
-
-        // Test with fresh stream for JSON
-        const emptyStream2 = new ReadableStream({
-            start(controller) {
-                controller.close();
-            },
-        });
-
-        const parser2 = createBodyParser(emptyStream2, 'application/json');
-        await assertRejects(() => parser2.json(), SyntaxError);
-    });
-
-    await t.step('large JSON response', async () => {
-        const largeObject = {
-            data: Array.from({ length: 1000 }, (_, i) => ({
-                id: i,
-                name: `Item ${i}`,
-                value: Math.random(),
-            })),
-        };
-
-        const jsonString = JSON.stringify(largeObject);
-        const stream = new ReadableStream({
-            start(controller) {
-                controller.enqueue(new TextEncoder().encode(jsonString));
-                controller.close();
-            },
-        });
-
-        const parser = createBodyParser(stream, 'application/json');
-        const result = await parser.json();
-
-        assertEquals(result.data.length, 1000);
-        assertEquals(result.data[0].id, 0);
-        assertEquals(result.data[999].id, 999);
-    });
-
-    await t.step('binary data handling', async () => {
-        const binaryData = new Uint8Array(256);
-        for (let i = 0; i < 256; i++) {
-            binaryData[i] = i;
-        }
-
-        const stream = new ReadableStream({
-            start(controller) {
-                controller.enqueue(binaryData);
-                controller.close();
-            },
-        });
-
-        const parser = createBodyParser(stream, 'application/octet-stream');
-
-        const arrayBuffer = await parser.arrayBuffer();
-        const resultArray = new Uint8Array(arrayBuffer);
-
-        assertEquals(resultArray.length, 256);
-        for (let i = 0; i < 256; i++) {
-            assertEquals(resultArray[i], i);
-        }
-    });
-
-    await t.step('blob creation with correct type', async () => {
-        const data = 'Hello, blob world!';
-        const stream = new ReadableStream({
-            start(controller) {
-                controller.enqueue(new TextEncoder().encode(data));
-                controller.close();
-            },
-        });
-
-        const parser = createBodyParser(stream, 'text/plain; charset=utf-8');
-        const blob = await parser.blob();
-
-        assertEquals(blob.type, 'text/plain; charset=utf-8');
-        assertEquals(blob.size, data.length);
-
-        const text = await blob.text();
-        assertEquals(text, data);
-    });
-
-    await t.step('multiple body reads should fail', async () => {
-        const stream = new ReadableStream({
-            start(controller) {
-                controller.enqueue(new TextEncoder().encode('test'));
-                controller.close();
-            },
-        });
-
-        const parser = createBodyParser(stream, 'text/plain');
-
-        assertEquals(parser.bodyUsed, false);
-        await parser.text();
-        assertEquals(parser.bodyUsed, true);
-
-        await assertRejects(
-            () => parser.json(),
-            Error,
-            'body stream already read',
-        );
-        await assertRejects(
-            () => parser.text(),
-            Error,
-            'body stream already read',
-        );
-        await assertRejects(
-            () => parser.arrayBuffer(),
-            Error,
-            'body stream already read',
-        );
-        await assertRejects(
-            () => parser.blob(),
-            Error,
-            'body stream already read',
-        );
-        await assertRejects(() => parser.formData(), Error, 'Unsupported');
-    });
 });
 
 // Stream utilities comprehensive tests
@@ -842,24 +686,6 @@ Deno.test('Performance Characteristics', async (t) => {
     const { server, url } = await createTestServer();
 
     try {
-        await t.step('memory usage with large responses', async () => {
-            await using client = new HttpClient({
-                maxResponseSize: 50 * 1024 * 1024, // 50MB limit
-            });
-
-            // Create a large response (simulate with repeated small responses)
-            const responses = await Promise.all(
-                Array.from({ length: 100 }, () =>
-                    client.send({
-                        url: `${url}/text`,
-                        method: 'GET',
-                    }).then((res) => res.text())),
-            );
-
-            assertEquals(responses.length, 100);
-            responses.forEach((text) => assertEquals(text, 'Hello, World!'));
-        });
-
         await t.step('connection reuse efficiency', async () => {
             using agent = createAgent(url);
 
