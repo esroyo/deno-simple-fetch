@@ -1,4 +1,5 @@
-import { createPool } from 'npm:generic-pool';
+import { createPool } from 'generic-pool';
+
 import { Agent, AgentPool, AgentPoolOptions, SendOptions } from './types.ts';
 import { createAgent } from './agent.ts';
 
@@ -32,19 +33,22 @@ export function createAgentPool(
         idleTimeoutMillis: idleTimeout,
         evictionRunIntervalMillis: Math.min(idleTimeout, 30_000),
     });
-    let releaseFns: Array<(close?: boolean) => Promise<void>> = [];
+
+    let releaseAgentFns: Array<(forceClose?: boolean) => Promise<void>> = [];
 
     async function send(
         sendOptions: SendOptions,
     ): Promise<Response> {
         let agent: Agent | undefined;
-        let released = false;
-        const releaseFn = async (forceClose = false) => {
-            if (!agent || released) {
+        let agentReleased = false;
+        const releaseAgentFn = async (forceClose = false) => {
+            if (!agent || agentReleased) {
                 return;
             }
-            released = true;
-            releaseFns = releaseFns.filter((r) => r !== releaseFn);
+            agentReleased = true;
+            releaseAgentFns = releaseAgentFns.filter((r) =>
+                r !== releaseAgentFn
+            );
             if (forceClose) {
                 agent.close();
             }
@@ -52,21 +56,20 @@ export function createAgentPool(
                 await pool.release(agent);
             }
         };
-        releaseFns.push(releaseFn);
+        releaseAgentFns.push(releaseAgentFn);
         try {
             agent = await pool.acquire();
             const responsePromise = agent.send(sendOptions);
-            agent.whenIdle().then(() => releaseFn());
-            const response = await responsePromise;
-            return response;
+            agent.whenIdle().then(() => releaseAgentFn());
+            return responsePromise;
         } catch (error) {
-            await releaseFn();
+            await releaseAgentFn();
             throw error;
         }
     }
 
     async function close() {
-        await Promise.all(releaseFns.map((release) => release(true)));
+        await Promise.all(releaseAgentFns.map((release) => release(true)));
         await pool.drain();
         await pool.clear();
     }

@@ -17,6 +17,7 @@
   "license": "MIT",
   "imports": {
         "@std/assert": "jsr:@std/assert@1.0.6",
-        "@std/testing": "jsr:@std/testing@1.0.4"
+        "@std/testing": "jsr:@std/testing@1.0.4",
+        "generic-pool": "npm:generic-pool@3.9.0"
   }
 }
