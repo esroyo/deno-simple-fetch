@@ -94,8 +94,8 @@ async function fetchImpl(
 }
 
 // Factory function for creating bound fetch function
-export function createFetch() {
-    let fallbackHttpClient: HttpClient | undefined;
+export function createFetch(client?: HttpClient) {
+    const defaultHttpClient: HttpClient = client || new HttpClient();
     const fetch = async (
         input: RequestInfo | URL,
         init: RequestInit & { client?: HttpClient } = {},
@@ -104,16 +104,16 @@ export function createFetch() {
             Object.defineProperty(init, 'client', {
                 enumerable: false,
                 configurable: true,
-                get() {
-                    if (!fallbackHttpClient) {
-                        fallbackHttpClient = new HttpClient();
-                    }
-                    return fallbackHttpClient;
-                },
+                value: defaultHttpClient,
             });
         }
         return fetchImpl(input, init as RequestInit & { client: HttpClient });
     };
-    const close: () => Promise<void> = async () => fallbackHttpClient?.close();
+    const close: () => Promise<void> = async () => {
+        // Avoid closing the HttpClient if it was provided by param.
+        if (!client) {
+            return defaultHttpClient?.close();
+        }
+    };
     return Object.assign(fetch, { close, [Symbol.asyncDispose]: close });
 }
