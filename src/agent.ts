@@ -16,6 +16,9 @@ const PORT_MAP: Record<string, number> = {
 export function createAgent(
     baseUrl: string,
 ): Agent {
+    const registry = new FinalizationRegistry<() => void>((cleanup) =>
+        cleanup()
+    );
     let connection: Deno.Conn | undefined;
     let isBusy = false;
     let lastController: AbortController | undefined;
@@ -114,9 +117,14 @@ export function createAgent(
             );
 
             let shouldCloseAfterBody = false;
-            const onDone = () => {
-                if (shouldCloseAfterBody) {
-                    connection?.close(); // Closing only after stream has been consumed
+            let finalized = false;
+
+            const onDone = (forceClose = shouldCloseAfterBody) => {
+                if (finalized) return;
+                finalized = true;
+
+                if (forceClose) {
+                    connection?.close();
                     connection = undefined;
                 }
                 lastUsedTime = Date.now();
@@ -136,8 +144,11 @@ export function createAgent(
             ) as ResponseWithExtras;
             response.url = fullUrl.toString();
 
+            const responseRef = new WeakRef(response);
             signal.addEventListener('abort', (ev) => {
-                response.body.cancel((ev.target as AbortSignal)?.reason);
+                responseRef.deref()?.body.cancel(
+                    (ev.target as AbortSignal)?.reason,
+                );
             });
 
             // Important: For HTTP/1.1, connection can be reused if we can determine
@@ -149,6 +160,15 @@ export function createAgent(
             // Without content-length or chunked encoding, we can't know when body ends
             // So we must close the connection after this response
             shouldCloseAfterBody = !hasContentLength && !isChunked;
+
+            // Register the response for cleanup if it becomes unreachable
+            // This is our safety net - if onDone never gets called due to an abandoned response,
+            // the finalizer will force connection closure when the response is GC'd
+            registry.register(response, () => {
+                if (!finalized) {
+                    onDone(true); // Force close the connection
+                }
+            });
 
             return response;
         } catch (error) {

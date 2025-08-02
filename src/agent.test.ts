@@ -330,6 +330,41 @@ Deno.test('Agent - Concurrency', async (t) => {
             assertEquals(agent.lastUsed > initialTime, true);
         });
 
+        await t.step(
+            'not consumed responses will close the connection when garbage collected',
+            async () => {
+                using agent = createAgent(url);
+
+                await (async () => {
+                    const response1 = await agent.send({
+                        url: '/text',
+                        method: 'GET',
+                    });
+                    assertEquals(response1.status, 200);
+                    // Note: not consuming the body
+                })();
+
+                const idlePromise = agent.whenIdle();
+
+                // Force garbage collection multiple times
+                for (let i = 0; i < 5; i += 1) {
+                    // @ts-ignore
+                    globalThis?.gc?.();
+                    await new Promise((resolve) => setTimeout(resolve, 0));
+                }
+
+                // Clean-up should free the agent
+                await idlePromise;
+
+                // Second request would be able to reuse the same agent
+                const response2 = await agent.send({
+                    url: '/json',
+                    method: 'GET',
+                });
+                assertEquals(response2.status, 200);
+            },
+        );
+
         await t.step('agent connection error handling', async () => {
             using agent = createAgent(url);
 
