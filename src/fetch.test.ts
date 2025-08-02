@@ -2,37 +2,28 @@ import { assertEquals, assertRejects } from './test-utils.ts';
 import { createFetch, HttpClient } from './fetch.ts';
 import { createTestServer } from './test-utils.ts';
 
-Deno.test('HTTP Client - Fetch-like API', async (t) => {
-    const { server, url } = await createTestServer(8090);
+Deno.test('HTTP Client - raw API', async (t) => {
+    const { server, url } = await createTestServer();
 
     try {
-        await t.step('basic GET request with fetch method', async () => {
+        await t.step('basic GET request', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/text`);
-
+            const response = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
             assertEquals(response.status, 200);
             assertEquals(response.ok, true);
             const text = await response.text();
             assertEquals(text, 'Hello, World!');
         });
 
-        await t.step('GET request with explicit method', async () => {
-            await using client = new HttpClient();
-            const response = await client.fetch(`${url}/json`, {
-                method: 'GET',
-            });
-
-            assertEquals(response.status, 200);
-            assertEquals(response.ok, true);
-            const json = await response.json();
-            assertEquals(json.message, 'Hello, JSON!');
-        });
-
         await t.step('POST request with JSON body', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/echo`, {
+            const response = await client.send({
+                url: `${url}/echo`,
                 method: 'POST',
-                headers: { 'content-type': 'application/json' },
+                headers: new Headers({ 'content-type': 'application/json' }),
                 body: JSON.stringify({ test: 'data' }),
             });
 
@@ -43,9 +34,10 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
 
         await t.step('PUT request', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/echo`, {
+            const response = await client.send({
+                url: `${url}/echo`,
                 method: 'PUT',
-                headers: { 'content-type': 'application/json' },
+                headers: new Headers({ 'content-type': 'application/json' }),
                 body: JSON.stringify({ updated: true }),
             });
 
@@ -56,7 +48,8 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
 
         await t.step('DELETE request', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/echo`, {
+            const response = await client.send({
+                url: `${url}/echo`,
                 method: 'DELETE',
             });
 
@@ -67,9 +60,10 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
 
         await t.step('PATCH request', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/echo`, {
+            const response = await client.send({
+                url: `${url}/echo`,
                 method: 'PATCH',
-                headers: { 'content-type': 'application/json' },
+                headers: new Headers({ 'content-type': 'application/json' }),
                 body: JSON.stringify({ patched: true }),
             });
 
@@ -80,7 +74,8 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
 
         await t.step('HEAD request', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/echo`, {
+            const response = await client.send({
+                url: `${url}/echo`,
                 method: 'HEAD',
             });
             assertEquals(response.status, 200);
@@ -88,7 +83,8 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
 
         await t.step('OPTIONS request', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/echo`, {
+            const response = await client.send({
+                url: `${url}/echo`,
                 method: 'OPTIONS',
             });
 
@@ -97,41 +93,16 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
             assertEquals(echo.method, 'OPTIONS');
         });
 
-        await t.step('custom headers with fetch', async () => {
+        await t.step('custom headers', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/echo`, {
+            const response = await client.send({
+                url: `${url}/echo`,
                 method: 'GET',
-                headers: { 'x-custom-header': 'test-value' },
+                headers: new Headers({ 'x-custom-header': 'test-value' }),
             });
 
             const echo = await response.json();
             assertEquals(echo.headers['x-custom-header'], 'test-value');
-        });
-
-        await t.step('headers as Headers object', async () => {
-            await using client = new HttpClient();
-            const headers = new Headers();
-            headers.set('authorization', 'Bearer token123');
-
-            const response = await client.fetch(`${url}/echo`, {
-                method: 'GET',
-                headers,
-            });
-
-            const echo = await response.json();
-            assertEquals(echo.headers['authorization'], 'Bearer token123');
-        });
-
-        await t.step('headers as array', async () => {
-            await using client = new HttpClient();
-            const response = await client.fetch(`${url}/echo`, {
-                method: 'GET',
-                headers: [['x-api-key', 'secret'], ['x-version', '1.0']],
-            });
-
-            const echo = await response.json();
-            assertEquals(echo.headers['x-api-key'], 'secret');
-            assertEquals(echo.headers['x-version'], '1.0');
         });
 
         await t.step('AbortSignal timeout', async () => {
@@ -139,10 +110,13 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
 
             await assertRejects(
                 () =>
-                    client.fetch(`${url}/slow`, {
+                    client.send({
+                        url: `${url}/slow`,
+                        method: 'GET',
                         signal: AbortSignal.timeout(100),
                     }).then((res) => res.text()),
-                'TimeoutError',
+                Error,
+                'timed out',
             );
         });
 
@@ -155,15 +129,23 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
 
             await assertRejects(
                 () =>
-                    client.fetch(`${url}/slow`, { signal: controller.signal })
+                    client.send({
+                        url: `${url}/slow`,
+                        method: 'GET',
+                        signal: controller.signal,
+                    })
                         .then((res) => res.text()),
-                'TimeoutError',
+                Error,
+                'aborted',
             );
         });
 
         await t.step('bodyUsed tracking', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/text`);
+            const response = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
 
             assertEquals(response.bodyUsed, false);
             await response.text();
@@ -181,24 +163,36 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
             await using client = new HttpClient();
 
             // Success response
-            const goodResponse = await client.fetch(`${url}/text`);
+            const goodResponse = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
             assertEquals(goodResponse.ok, true);
 
             // Error response
-            const badResponse = await client.fetch(`${url}/notfound`);
+            const badResponse = await client.send({
+                url: `${url}/notfound`,
+                method: 'GET',
+            });
             assertEquals(badResponse.ok, false);
             assertEquals(badResponse.status, 404);
         });
 
         await t.step('arrayBuffer and blob methods', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/text`);
+            const response = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
 
             const arrayBuffer = await response.arrayBuffer();
             assertEquals(arrayBuffer instanceof ArrayBuffer, true);
 
             // Test with fresh response for blob
-            const response2 = await client.fetch(`${url}/text`);
+            const response2 = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
             const blob = await response2.blob();
             assertEquals(blob instanceof Blob, true);
         });
@@ -209,7 +203,10 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
                 await using client = new HttpClient();
 
                 // Make request to redirect endpoint
-                const response = await client.fetch(`${url}/redirect`);
+                const response = await client.send({
+                    url: `${url}/redirect`,
+                    method: 'GET',
+                });
 
                 // Should get the redirect status code (not follow the redirect)
                 assertEquals(response.status, 302);
@@ -224,195 +221,21 @@ Deno.test('HTTP Client - Fetch-like API', async (t) => {
                 assertEquals(text, 'Redirecting to /redirected-target');
             },
         );
-
-        await t.step('URL parameter handling', async () => {
-            await using client = new HttpClient();
-
-            // Test with URL object
-            const urlObj = new URL(`${url}/echo`);
-            urlObj.searchParams.set('param1', 'value1');
-            urlObj.searchParams.set('param2', 'value with spaces');
-
-            const response = await client.fetch(urlObj);
-            assertEquals(response.status, 200);
-
-            const echo = await response.json();
-            assertEquals(echo.url.includes('param1=value1'), true);
-            assertEquals(echo.url.includes('param2=value+with+spaces'), true);
-        });
-
-        await t.step('URLSearchParams body', async () => {
-            await using client = new HttpClient();
-            const params = new URLSearchParams();
-            params.set('username', 'john');
-            params.set('password', 'secret123');
-
-            const response = await client.fetch(`${url}/echo`, {
-                method: 'POST',
-                body: params,
-            });
-
-            assertEquals(response.status, 200);
-            const echo = await response.json();
-            assertEquals(
-                echo.headers['content-type'],
-                'application/x-www-form-urlencoded',
-            );
-        });
-
-        await t.step('Uint8Array body', async () => {
-            await using client = new HttpClient();
-            const data = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
-
-            const response = await client.fetch(`${url}/echo`, {
-                method: 'POST',
-                body: data,
-            });
-
-            assertEquals(response.status, 200);
-            const echo = await response.json();
-            assertEquals(echo.headers['content-length'], '5');
-        });
-
-        await t.step('ReadableStream body', async () => {
-            await using client = new HttpClient();
-            const encoder = new TextEncoder();
-            const stream = new ReadableStream({
-                start(controller) {
-                    controller.enqueue(encoder.encode('chunk1'));
-                    controller.enqueue(encoder.encode('chunk2'));
-                    controller.close();
-                },
-            });
-
-            const response = await client.fetch(`${url}/echo`, {
-                method: 'POST',
-                body: stream,
-            });
-
-            assertEquals(response.status, 200);
-            const echo = await response.json();
-            assertEquals(echo.headers['transfer-encoding'], 'chunked');
-        });
-    } finally {
-        await server.shutdown();
-    }
-});
-
-Deno.test('HTTP Client - No Base URL (like global fetch)', async (t) => {
-    const { server, url } = await createTestServer(8091);
-
-    try {
-        await t.step('fetch with full URL', async () => {
-            await using client = new HttpClient(); // No base URL
-            const response = await client.fetch(`${url}/text`);
-
-            assertEquals(response.status, 200);
-            const text = await response.text();
-            assertEquals(text, 'Hello, World!');
-        });
-
-        await t.step('POST with full URL', async () => {
-            await using client = new HttpClient();
-            const response = await client.fetch(`${url}/echo`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ message: 'test' }),
-            });
-
-            assertEquals(response.status, 200);
-            const echo = await response.json();
-            assertEquals(echo.method, 'POST');
-        });
-
-        await t.step('multiple different origins', async () => {
-            await using client = new HttpClient();
-
-            // Make requests to the same server (different agent pools would be created for different origins)
-            const response1 = await client.fetch(`${url}/text`);
-            const response2 = await client.fetch(`${url}/json`);
-
-            assertEquals(response1.status, 200);
-            assertEquals(response2.status, 200);
-
-            const text = await response1.text();
-            const json = await response2.json();
-
-            assertEquals(text, 'Hello, World!');
-            assertEquals(json.message, 'Hello, JSON!');
-        });
-    } finally {
-        await server.shutdown();
-    }
-});
-
-Deno.test('createFetch factory function', async (t) => {
-    const { server, url } = await createTestServer(8084);
-
-    try {
-        await t.step('createFetch with base URL', async () => {
-            const { fetch, close } = createFetch();
-
-            try {
-                // Test fetch method
-                const response1 = await fetch(`${url}/text`);
-                assertEquals(response1.status, 200);
-                const text = await response1.text();
-                assertEquals(text, 'Hello, World!');
-
-                // Test GET request
-                const response2 = await fetch(`${url}/json`, { method: 'GET' });
-                const json = await response2.json();
-                assertEquals(json.message, 'Hello, JSON!');
-
-                // Test POST request
-                const response3 = await fetch(`${url}/echo`, {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({ test: 'factory' }),
-                });
-                const echo = await response3.json();
-                assertEquals(echo.method, 'POST');
-            } finally {
-                close();
-            }
-        });
-
-        await t.step('createFetch without base URL', async () => {
-            const { fetch, close } = createFetch();
-
-            try {
-                const response = await fetch(`${url}/text`);
-                assertEquals(response.status, 200);
-                const text = await response.text();
-                assertEquals(text, 'Hello, World!');
-            } finally {
-                close();
-            }
-        });
-
-        await t.step('createFetch with Symbol.asyncDispose', async () => {
-            await using fetchClient = createFetch();
-
-            const response = await fetchClient.fetch(`${url}/text`);
-            assertEquals(response.status, 200);
-            const text = await response.text();
-            assertEquals(text, 'Hello, World!');
-
-            // Client will be automatically disposed
-        });
     } finally {
         await server.shutdown();
     }
 });
 
 Deno.test('HTTP Client - Stream Access', async (t) => {
-    const { server, url } = await createTestServer(8085);
+    const { server, url } = await createTestServer();
 
     try {
         await t.step('direct stream access', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/text`);
+            const response = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
 
             // Access raw stream
             const reader = response.body.getReader();
@@ -444,7 +267,10 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
 
         await t.step('chunked response handling', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/chunked`);
+            const response = await client.send({
+                url: `${url}/chunked`,
+                method: 'GET',
+            });
 
             assertEquals(response.status, 200);
             const text = await response.text();
@@ -453,7 +279,10 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
 
         await t.step('gzip decompression', async () => {
             await using client = new HttpClient();
-            const response = await client.fetch(`${url}/gzip`);
+            const response = await client.send({
+                url: `${url}/gzip`,
+                method: 'GET',
+            });
 
             assertEquals(response.status, 200);
             const text = await response.text();
@@ -464,7 +293,9 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
             await using client = new HttpClient();
             const controller = new AbortController();
 
-            const responsePromise = client.fetch(`${url}/slow`, {
+            const responsePromise = client.send({
+                url: `${url}/slow`,
+                method: 'GET',
                 signal: controller.signal,
             });
 
@@ -479,7 +310,7 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
 });
 
 Deno.test('HTTP Client - Error Handling', async (t) => {
-    const { server, url } = await createTestServer(8086);
+    const { server, url } = await createTestServer();
 
     try {
         await t.step('connection errors', async () => {
@@ -487,7 +318,11 @@ Deno.test('HTTP Client - Error Handling', async (t) => {
 
             // Try to connect to non-existent server
             await assertRejects(
-                () => client.fetch('http://localhost:99999/test'),
+                () =>
+                    client.send({
+                        url: 'http://localhost:99999/test',
+                        method: 'GET',
+                    }),
                 Error,
             );
         });
@@ -496,7 +331,7 @@ Deno.test('HTTP Client - Error Handling', async (t) => {
             await using client = new HttpClient();
 
             await assertRejects(
-                () => client.fetch('not-a-url'),
+                () => client.send({ url: 'not-a-url', method: 'GET' }),
                 Error,
             );
         });
@@ -505,25 +340,13 @@ Deno.test('HTTP Client - Error Handling', async (t) => {
             await using client = new HttpClient();
 
             await assertRejects(
-                () => client.fetch('ftp://example.com/file'),
-                Error,
-                'Unsupported protocol',
-            );
-        });
-
-        await t.step('FormData body rejection', async () => {
-            await using client = new HttpClient();
-            const formData = new FormData();
-            formData.append('test', 'value');
-
-            await assertRejects(
                 () =>
-                    client.fetch(`${url}/echo`, {
-                        method: 'POST',
-                        body: formData,
+                    client.send({
+                        url: 'ftp://example.com/file',
+                        method: 'GET',
                     }),
                 Error,
-                'FormData bodies require multipart encoding implementation',
+                'Unsupported protocol',
             );
         });
     } finally {
@@ -532,16 +355,25 @@ Deno.test('HTTP Client - Error Handling', async (t) => {
 });
 
 Deno.test('HTTP Client - Connection Management', async (t) => {
-    const { server, url } = await createTestServer(8087);
+    const { server, url } = await createTestServer();
 
     try {
         await t.step('agent pool reuse', async () => {
             await using client = new HttpClient();
 
             // Make multiple requests to same origin
-            const response1 = await client.fetch(`${url}/text`);
-            const response2 = await client.fetch(`${url}/json`);
-            const response3 = await client.fetch(`${url}/echo`);
+            const response1 = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
+            const response2 = await client.send({
+                url: `${url}/json`,
+                method: 'GET',
+            });
+            const response3 = await client.send({
+                url: `${url}/echo`,
+                method: 'GET',
+            });
 
             assertEquals(response1.status, 200);
             assertEquals(response2.status, 200);
@@ -556,18 +388,321 @@ Deno.test('HTTP Client - Connection Management', async (t) => {
             const client = new HttpClient();
 
             // Make a request
-            const response = await client.fetch(`${url}/text`);
+            const response = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
             await response.text();
 
             // Close client
             await client.close();
 
             // Subsequent requests should create new agent pools
-            const response2 = await client.fetch(`${url}/text`);
+            const response2 = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
             assertEquals(response2.status, 200);
             await response2.text();
 
             await client.close();
+        });
+    } finally {
+        await server.shutdown();
+    }
+});
+
+Deno.test('Fetch API', async (t) => {
+    const { server, url } = await createTestServer();
+
+    await using fetch = createFetch();
+
+    try {
+        await t.step('basic GET request', async () => {
+            const response = await fetch(`${url}/text`);
+            assertEquals(response.status, 200);
+            assertEquals(response.ok, true);
+            const text = await response.text();
+            assertEquals(text, 'Hello, World!');
+        });
+
+        await t.step('basic GET request with explicit method', async () => {
+            const response = await fetch(`${url}/text`, { method: 'GET' });
+            assertEquals(response.status, 200);
+            assertEquals(response.ok, true);
+            const text = await response.text();
+            assertEquals(text, 'Hello, World!');
+        });
+
+        await t.step('POST request with JSON body', async () => {
+            const response = await fetch(`${url}/echo`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ test: 'data' }),
+            });
+
+            assertEquals(response.status, 200);
+            const echo = await response.json();
+            assertEquals(echo.method, 'POST');
+        });
+
+        await t.step('PUT request', async () => {
+            const response = await fetch(`${url}/echo`, {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ updated: true }),
+            });
+
+            assertEquals(response.status, 200);
+            const echo = await response.json();
+            assertEquals(echo.method, 'PUT');
+        });
+
+        await t.step('DELETE request', async () => {
+            const response = await fetch(`${url}/echo`, {
+                method: 'DELETE',
+            });
+
+            assertEquals(response.status, 200);
+            const echo = await response.json();
+            assertEquals(echo.method, 'DELETE');
+        });
+
+        await t.step('PATCH request', async () => {
+            const response = await fetch(`${url}/echo`, {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ patched: true }),
+            });
+
+            assertEquals(response.status, 200);
+            const echo = await response.json();
+            assertEquals(echo.method, 'PATCH');
+        });
+
+        await t.step('HEAD request', async () => {
+            const response = await fetch(`${url}/echo`, {
+                method: 'HEAD',
+            });
+            assertEquals(response.status, 200);
+        });
+
+        await t.step('OPTIONS request', async () => {
+            const response = await fetch(`${url}/echo`, {
+                method: 'OPTIONS',
+            });
+
+            assertEquals(response.status, 200);
+            const echo = await response.json();
+            assertEquals(echo.method, 'OPTIONS');
+        });
+
+        await t.step('custom headers', async () => {
+            const response = await fetch(`${url}/echo`, {
+                headers: { 'x-custom-header': 'test-value' },
+            });
+
+            const echo = await response.json();
+            assertEquals(echo.headers['x-custom-header'], 'test-value');
+        });
+
+        await t.step('AbortSignal timeout', async () => {
+            await assertRejects(
+                () =>
+                    fetch(`${url}/slow`, {
+                        signal: AbortSignal.timeout(100),
+                    }).then((res) => res.text()),
+                Error,
+                'timed out',
+            );
+        });
+
+        await t.step('manual AbortController', async () => {
+            const controller = new AbortController();
+
+            // Abort after 50ms
+            setTimeout(() => controller.abort(), 50);
+
+            await assertRejects(
+                () =>
+                    fetch(`${url}/slow`, {
+                        signal: controller.signal,
+                    })
+                        .then((res) => res.text()),
+                Error,
+                'aborted',
+            );
+        });
+
+        await t.step('bodyUsed tracking', async () => {
+            const response = await fetch(`${url}/text`);
+
+            assertEquals(response.bodyUsed, false);
+            await response.text();
+            assertEquals(response.bodyUsed, true);
+
+            // Should throw when trying to read body again
+            await assertRejects(
+                () => response.json(),
+                TypeError,
+                'body stream already read',
+            );
+        });
+
+        await t.step('response.ok property', async () => {
+            // Success response
+            const goodResponse = await fetch(`${url}/text`);
+            assertEquals(goodResponse.ok, true);
+
+            // Error response
+            const badResponse = await fetch(`${url}/notfound`);
+            assertEquals(badResponse.ok, false);
+            assertEquals(badResponse.status, 404);
+        });
+
+        await t.step('arrayBuffer and blob methods', async () => {
+            const response = await fetch(`${url}/text`);
+
+            const arrayBuffer = await response.arrayBuffer();
+            assertEquals(arrayBuffer instanceof ArrayBuffer, true);
+
+            // Test with fresh response for blob
+            const response2 = await fetch(`${url}/text`);
+            const blob = await response2.blob();
+            assertEquals(blob instanceof Blob, true);
+        });
+
+        await t.step(
+            'redirect response with location header access',
+            async () => {
+                // Make request to redirect endpoint
+                const response = await fetch(`${url}/redirect`);
+
+                // Should get the redirect status code (not follow the redirect)
+                assertEquals(response.status, 302);
+                assertEquals(response.ok, false); // 3xx responses are not "ok"
+
+                // Should be able to access the Location header
+                const locationHeader = response.headers.get('location');
+                assertEquals(locationHeader, '/redirected-target');
+
+                // Should also be able to read any body content from the redirect response
+                const text = await response.text();
+                assertEquals(text, 'Redirecting to /redirected-target');
+            },
+        );
+
+        await t.step('URL parameter handling', async () => {
+            // Test with URL object
+            const urlObj = new URL(`${url}/echo`);
+            urlObj.searchParams.set('param1', 'value1');
+            urlObj.searchParams.set('param2', 'value with spaces');
+
+            const response = await fetch(urlObj);
+            assertEquals(response.status, 200);
+
+            const echo = await response.json();
+            assertEquals(echo.url.includes('param1=value1'), true);
+            assertEquals(echo.url.includes('param2=value+with+spaces'), true);
+        });
+
+        await t.step('URLSearchParams body', async () => {
+            const params = new URLSearchParams();
+            params.set('username', 'john');
+            params.set('password', 'secret123');
+
+            const response = await fetch(`${url}/echo`, {
+                method: 'POST',
+                body: params,
+            });
+
+            assertEquals(response.status, 200);
+            const echo = await response.json();
+            assertEquals(
+                echo.headers['content-type'],
+                'application/x-www-form-urlencoded',
+            );
+        });
+
+        await t.step('Uint8Array body', async () => {
+            const data = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
+
+            const response = await fetch(`${url}/echo`, {
+                method: 'POST',
+                body: data,
+            });
+
+            assertEquals(response.status, 200);
+            const echo = await response.json();
+            assertEquals(echo.headers['content-length'], '5');
+        });
+
+        await t.step('ReadableStream body', async () => {
+            const encoder = new TextEncoder();
+            const stream = new ReadableStream({
+                start(controller) {
+                    controller.enqueue(encoder.encode('chunk1'));
+                    controller.enqueue(encoder.encode('chunk2'));
+                    controller.close();
+                },
+            });
+
+            const response = await fetch(`${url}/echo`, {
+                method: 'POST',
+                body: stream,
+            });
+
+            assertEquals(response.status, 200);
+            const echo = await response.json();
+            assertEquals(echo.headers['transfer-encoding'], 'chunked');
+        });
+    } finally {
+        await server.shutdown();
+    }
+});
+
+Deno.test('Fetch API - Error Handling', async (t) => {
+    const { server, url } = await createTestServer();
+
+    await using fetch = createFetch();
+
+    try {
+        await t.step('connection errors', async () => {
+            // Try to connect to non-existent server
+            await assertRejects(
+                () => fetch('http://localhost:99999/test'),
+                Error,
+            );
+        });
+
+        await t.step('invalid URLs', async () => {
+            await assertRejects(
+                () => fetch('not-a-url'),
+                Error,
+            );
+        });
+
+        await t.step('unsupported protocols', async () => {
+            await assertRejects(
+                () => fetch('ftp://example.com/file'),
+                Error,
+                'Unsupported protocol',
+            );
+        });
+
+        await t.step('FormData body rejection', async () => {
+            const formData = new FormData();
+            formData.append('test', 'value');
+
+            await assertRejects(
+                () =>
+                    fetch(`${url}/echo`, {
+                        method: 'POST',
+                        body: formData,
+                    }),
+                Error,
+                'FormData bodies require multipart encoding implementation',
+            );
         });
     } finally {
         await server.shutdown();

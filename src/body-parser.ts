@@ -1,6 +1,9 @@
+import type { StreamingOptions } from './types.ts';
+
 export function createBodyParser(
     stream: ReadableStream<Uint8Array>,
     contentType: string,
+    options: StreamingOptions = {},
 ): {
     json(): Promise<any>;
     text(): Promise<string>;
@@ -9,7 +12,14 @@ export function createBodyParser(
     blob(): Promise<Blob>;
     bodyUsed: boolean;
 } {
+    const {
+        maxResponseSize = 100 * 1024 * 1024, // 100MB
+        maxChunkSize = 64 * 1024, // 64KB
+        enableBackpressure = true,
+    } = options;
+
     let bodyUsed = false;
+    let totalBytesRead = 0;
 
     function assertNotUsed() {
         if (bodyUsed) {
@@ -18,14 +28,61 @@ export function createBodyParser(
         bodyUsed = true;
     }
 
-    async function getArrayBuffer(): Promise<ArrayBuffer> {
+    // Create a size-limited stream
+    function createSizeLimitedStream(): ReadableStream<Uint8Array> {
+        return stream.pipeThrough(
+            new TransformStream({
+                transform(chunk, controller) {
+                    totalBytesRead += chunk.length;
+
+                    if (totalBytesRead > maxResponseSize) {
+                        controller.error(
+                            new Error(
+                                `Response size limit exceeded: ${maxResponseSize} bytes`,
+                            ),
+                        );
+                        return;
+                    }
+
+                    // Enforce chunk size limits
+                    if (chunk.length > maxChunkSize) {
+                        // Split large chunks
+                        for (let i = 0; i < chunk.length; i += maxChunkSize) {
+                            const subChunk = chunk.slice(i, i + maxChunkSize);
+                            controller.enqueue(subChunk);
+                        }
+                    } else {
+                        controller.enqueue(chunk);
+                    }
+                },
+            }),
+        );
+    }
+
+    async function getArrayBufferWithLimits(): Promise<ArrayBuffer> {
         assertNotUsed();
 
+        const limitedStream = createSizeLimitedStream();
+        const chunks: Uint8Array[] = [];
         let totalLength = 0;
-        const chunks: Uint8Array[] = await Array.fromAsync(stream, (chunk) => {
-            totalLength += chunk.length;
-            return chunk;
-        });
+
+        try {
+            for await (const chunk of limitedStream) {
+                chunks.push(chunk);
+                totalLength += chunk.length;
+
+                // Implement backpressure by yielding control periodically
+                if (enableBackpressure && totalLength % 100 === 0) {
+                    await new Promise<void>((resolve) =>
+                        globalThis.queueMicrotask(resolve)
+                    );
+                }
+            }
+        } catch (error) {
+            // Clean up chunks to prevent memory leaks
+            chunks.length = 0;
+            throw error;
+        }
 
         const arrayBuffer = new ArrayBuffer(totalLength);
         const view = new Uint8Array(arrayBuffer);
@@ -36,6 +93,9 @@ export function createBodyParser(
             offset += chunk.length;
         }
 
+        // Clear chunks array to help GC
+        chunks.length = 0;
+
         return arrayBuffer;
     }
 
@@ -45,13 +105,22 @@ export function createBodyParser(
         },
 
         async json(): Promise<any> {
-            const buffer = await getArrayBuffer();
+            const buffer = await getArrayBufferWithLimits();
             const text = new TextDecoder().decode(buffer);
-            return JSON.parse(text);
+
+            try {
+                return JSON.parse(text);
+            } catch (error) {
+                throw new SyntaxError(
+                    `Invalid JSON: ${
+                        Error.isError(error) ? error.message : '-'
+                    }`,
+                );
+            }
         },
 
         async text(): Promise<string> {
-            const buffer = await getArrayBuffer();
+            const buffer = await getArrayBufferWithLimits();
             return new TextDecoder().decode(buffer);
         },
 
@@ -76,14 +145,14 @@ export function createBodyParser(
         },
 
         async blob(): Promise<Blob> {
-            const buffer = await getArrayBuffer();
+            const buffer = await getArrayBufferWithLimits();
             return new Blob([buffer], {
                 type: contentType || 'application/octet-stream',
             });
         },
 
         async arrayBuffer(): Promise<ArrayBuffer> {
-            return getArrayBuffer();
+            return getArrayBufferWithLimits();
         },
     };
 }

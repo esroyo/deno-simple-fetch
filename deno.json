@@ -8,7 +8,7 @@
         "fmt": "deno fmt src/",
         "release": "deno run -A npm:commit-and-tag-version && git push --follow-tags origin main && deno publish --allow-slow-types",
         "release:dry-run": "deno run -A npm:commit-and-tag-version --dry-run && deno publish --dry-run --allow-slow-types --allow-dirty",
-        "test": "deno test -A"
+        "test": "deno test -A --parallel"
     },
     "fmt": {
         "indentWidth": 4,

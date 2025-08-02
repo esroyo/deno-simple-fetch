@@ -3,36 +3,31 @@ import type {
     RequestInit,
     Response,
     ResponseWithExtras,
+    SendOptions,
+    StreamingOptions,
 } from './types.ts';
 import { createAgentPool } from './agent-pool.ts';
 
 export class HttpClient {
     protected _agentPools: Record<string, AgentPool> = {};
+    protected _streamingOptions: StreamingOptions;
 
-    async fetch(
-        input: string | URL,
-        init: RequestInit = {},
-    ): Promise<Response> {
-        const url = typeof input === 'string' ? input : input.toString();
-        const {
-            method = 'GET',
-            headers: headersInit,
-            body,
-            signal,
-        } = init;
+    constructor(streamingOptions: StreamingOptions = {}) {
+        this._streamingOptions = {
+            maxResponseSize: 100 * 1024 * 1024, // 100MB
+            maxChunkSize: 64 * 1024, // 64KB
+            backpressureThreshold: 1024 * 1024, // 1MB
+            enableBackpressure: true,
+            ...streamingOptions,
+        };
+    }
 
-        const headers = this._normalizeHeaders(headersInit);
-        const processedBody = this._processBody(body, headers);
-
+    async send(
+        options: SendOptions & StreamingOptions,
+    ): Promise<ResponseWithExtras> {
         // Use existing pool or create temporary one
-        const agentPool = this._getOrCreateAgentPool(url);
-        const response = await agentPool.send({
-            url,
-            method,
-            headers,
-            body: processedBody,
-            signal,
-        });
+        const agentPool = this._getOrCreateAgentPool(options.url);
+        const response = await agentPool.send(options);
         return response;
     }
 
@@ -48,43 +43,6 @@ export class HttpClient {
         await this.close();
     }
 
-    protected _normalizeHeaders(headersInit?: HeadersInit): Headers {
-        if (!headersInit) return new Headers();
-        if (headersInit instanceof Headers) return headersInit;
-        if (Array.isArray(headersInit)) {
-            return new Headers(headersInit);
-        }
-        return new Headers(Object.entries(headersInit));
-    }
-
-    protected _processBody(
-        body?: BodyInit,
-        headers?: Headers,
-    ): string | Uint8Array | ReadableStream | undefined {
-        if (!body) return undefined;
-
-        if (
-            typeof body === 'string' ||
-            body instanceof Uint8Array ||
-            body instanceof ReadableStream
-        ) {
-            return body;
-        }
-
-        if (body instanceof FormData) {
-            throw new Error(
-                'FormData bodies require multipart encoding implementation',
-            );
-        }
-
-        if (body instanceof URLSearchParams) {
-            headers?.set('content-type', 'application/x-www-form-urlencoded');
-            return body.toString();
-        }
-
-        return String(body);
-    }
-
     protected _getOrCreateAgentPool(
         url: string,
     ): AgentPool {
@@ -94,12 +52,90 @@ export class HttpClient {
     }
 }
 
+function normalizeHeaders(headersInit?: HeadersInit): Headers {
+    if (!headersInit) return new Headers();
+    if (headersInit instanceof Headers) return headersInit;
+    if (Array.isArray(headersInit)) {
+        return new Headers(headersInit);
+    }
+    return new Headers(Object.entries(headersInit));
+}
+
+function processBody(
+    body?: BodyInit,
+    headers?: Headers,
+): string | Uint8Array | ReadableStream | undefined {
+    if (!body) return undefined;
+
+    if (
+        typeof body === 'string' ||
+        body instanceof Uint8Array ||
+        body instanceof ReadableStream
+    ) {
+        return body;
+    }
+
+    if (body instanceof FormData) {
+        throw new Error(
+            'FormData bodies require multipart encoding implementation',
+        );
+    }
+
+    if (body instanceof URLSearchParams) {
+        headers?.set('content-type', 'application/x-www-form-urlencoded');
+        return body.toString();
+    }
+
+    return String(body);
+}
+
+async function fetchImpl(
+    input: RequestInfo | URL,
+    init: RequestInit & { client: HttpClient },
+): Promise<Response> {
+    const url = input instanceof Request ? input.url : input.toString();
+    const {
+        method = 'GET',
+        headers: headersInit,
+        body,
+        signal,
+    } = init;
+
+    const headers = normalizeHeaders(headersInit);
+    const processedBody = processBody(body, headers);
+    const { client } = init;
+
+    const response = await client.send({
+        url,
+        method,
+        headers,
+        body: processedBody,
+        signal,
+    });
+    return response;
+}
+
 // Factory function for creating bound fetch function
 export function createFetch() {
-    const client = new HttpClient();
-    return {
-        fetch: client.fetch.bind(client),
-        close: client.close.bind(client),
-        [Symbol.asyncDispose]: client[Symbol.asyncDispose].bind(client),
+    let fallbackHttpClient: HttpClient | undefined;
+    const fetch = async (
+        input: RequestInfo | URL,
+        init: RequestInit & { client?: HttpClient } = {},
+    ): Promise<Response> => {
+        if (!init.client) {
+            Object.defineProperty(init, 'client', {
+                enumerable: false,
+                configurable: true,
+                get() {
+                    if (!fallbackHttpClient) {
+                        fallbackHttpClient = new HttpClient();
+                    }
+                    return fallbackHttpClient;
+                },
+            });
+        }
+        return fetchImpl(input, init as RequestInit & { client: HttpClient });
     };
+    const close: () => Promise<void> = async () => fallbackHttpClient?.close();
+    return Object.assign(fetch, { close, [Symbol.asyncDispose]: close });
 }

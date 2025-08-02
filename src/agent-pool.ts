@@ -5,6 +5,7 @@ import {
     AgentPoolOptions,
     ResponseWithExtras,
     SendOptions,
+    StreamingOptions,
 } from './types.ts';
 import { createAgent } from './agent.ts';
 
@@ -40,7 +41,9 @@ export function createAgentPool(
     });
     let releaseFns: Array<(close?: boolean) => Promise<void>> = [];
 
-    async function send(sendOptions: SendOptions): Promise<ResponseWithExtras> {
+    async function send(
+        sendOptions: SendOptions & StreamingOptions,
+    ): Promise<ResponseWithExtras> {
         let agent: Agent | undefined;
         let released = false;
         const releaseFn = async (forceClose = false) => {
@@ -60,9 +63,9 @@ export function createAgentPool(
         try {
             agent = await pool.acquire();
             const responsePromise = agent.send(sendOptions);
-            responsePromise.catch(() => releaseFn());
             agent.whenIdle().then(() => releaseFn());
-            return responsePromise;
+            const response = await responsePromise;
+            return response;
         } catch (error) {
             await releaseFn();
             throw error;

@@ -5,7 +5,7 @@ import {
 } from './streams.ts';
 import { UnexpectedEofError } from './errors.ts';
 import { createBodyParser } from './body-parser.ts';
-import { ResponseWithExtras } from './types.ts';
+import { ResponseWithExtras, StreamingOptions } from './types.ts';
 
 // Line reader for HTTP headers using ReadableStream
 export class LineReader {
@@ -120,6 +120,7 @@ export async function writeRequest(
 export async function readResponse(
     conn: Deno.Conn,
     shouldIgnoreBody: (status: number) => boolean,
+    streamingOptions: StreamingOptions = {},
     onDone?: () => void,
 ): Promise<Omit<ResponseWithExtras, 'url'>> {
     const lineReader = new LineReader(
@@ -222,6 +223,7 @@ export async function readResponse(
     const bodyProps = createBodyParser(
         bodyStream,
         headers.get('content-type') ?? '',
+        streamingOptions,
     );
 
     return Object.assign(bodyProps, {

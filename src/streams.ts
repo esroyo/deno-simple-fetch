@@ -1,4 +1,4 @@
-import { TimeoutOptions } from './types.ts';
+import type { StreamingOptions, TimeoutOptions } from './types.ts';
 
 export function createTimeoutStream(
     stream: ReadableStream<Uint8Array>,
@@ -57,6 +57,11 @@ export function createChunkedEncodingStream(): TransformStream<
 
     return new TransformStream({
         transform(chunk, controller) {
+            // Skip empty chunks to avoid premature termination
+            if (chunk.length === 0) {
+                return;
+            }
+
             const chunkSize = chunk.length.toString(16);
             controller.enqueue(encoder.encode(`${chunkSize}\r\n`));
             controller.enqueue(chunk);
@@ -70,21 +75,36 @@ export function createChunkedEncodingStream(): TransformStream<
 }
 
 // Chunked decoding using TransformStream
-export function createChunkedDecodingStream(): TransformStream<
-    Uint8Array,
-    Uint8Array
-> {
+export function createChunkedDecodingStream(
+    options: StreamingOptions = {},
+): TransformStream<Uint8Array, Uint8Array> {
+    const {
+        maxChunkSize = 64 * 1024,
+        maxResponseSize = 100 * 1024 * 1024,
+    } = options;
+
     const decoder = new TextDecoder();
     let buffer = new Uint8Array(0);
     let state: 'size' | 'data' | 'after_chunk' | 'trailer' | 'done' = 'size';
     let chunkSize = 0;
     let chunkBytesRead = 0;
+    let totalBytesProcessed = 0;
+
+    // Limit buffer growth
+    const MAX_BUFFER_SIZE = Math.min(maxChunkSize * 2, 128 * 1024);
 
     function appendToBuffer(newData: Uint8Array) {
         const combined = new Uint8Array(buffer.length + newData.length);
         combined.set(buffer);
         combined.set(newData, buffer.length);
         buffer = combined;
+
+        // Prevent excessive buffer growth
+        if (buffer.length > MAX_BUFFER_SIZE) {
+            throw new Error(
+                `Buffer size limit exceeded: ${MAX_BUFFER_SIZE} bytes`,
+            );
+        }
     }
 
     function readLine(): string | null {
@@ -105,22 +125,54 @@ export function createChunkedDecodingStream(): TransformStream<
         return -1;
     }
 
+    // Strict validation for chunk size line format
+    function validateChunkSizeLine(sizeLine: string): void {
+        // Must contain only hex digits and optional whitespace
+        const trimmed = sizeLine.trim();
+        if (!/^[0-9a-fA-F]+$/.test(trimmed)) {
+            throw new Error(`Invalid chunk size format: "${sizeLine}"`);
+        }
+    }
+
     return new TransformStream({
         transform(chunk, controller) {
+            totalBytesProcessed += chunk.length;
+
+            if (totalBytesProcessed > maxResponseSize) {
+                controller.error(
+                    new Error(
+                        `Response size limit exceeded: ${maxResponseSize} bytes`,
+                    ),
+                );
+                return;
+            }
+
             appendToBuffer(chunk);
 
             while (buffer.length > 0 && state !== 'done') {
                 if (state === 'size') {
                     const sizeLine = readLine();
-                    if (sizeLine === null) break; // Need more data
+                    if (sizeLine === null) break;
+
+                    // Strict validation: chunk size must be followed by CRLF
+                    validateChunkSizeLine(sizeLine);
 
                     const sizeStr = sizeLine.trim();
                     chunkSize = parseInt(sizeStr, 16);
 
                     if (chunkSize === 0) {
-                        // Final chunk, read trailers
                         state = 'trailer';
                         continue;
+                    }
+
+                    // Validate chunk size
+                    if (chunkSize > maxChunkSize) {
+                        controller.error(
+                            new Error(
+                                `Chunk size ${chunkSize} exceeds limit ${maxChunkSize}`,
+                            ),
+                        );
+                        return;
                     }
 
                     state = 'data';
@@ -137,27 +189,22 @@ export function createChunkedDecodingStream(): TransformStream<
                     }
 
                     if (chunkBytesRead === chunkSize) {
-                        // We've read all the chunk data, now expect CRLF
                         state = 'after_chunk';
                     } else {
-                        break; // Need more data
+                        break;
                     }
                 } else if (state === 'after_chunk') {
-                    // Expect CRLF after chunk data
                     if (
                         buffer.length >= 2 && buffer[0] === 0x0D &&
                         buffer[1] === 0x0A
                     ) {
                         buffer = buffer.slice(2);
-                        state = 'size'; // Go back to reading next chunk size
+                        state = 'size';
                     } else if (buffer.length === 1 && buffer[0] === 0x0D) {
-                        // We have CR but need LF, wait for more data
                         break;
                     } else if (buffer.length === 0) {
-                        // CRLF might come in next chunk
                         break;
                     } else {
-                        // Malformed chunked data
                         controller.error(
                             new Error('Expected CRLF after chunk data'),
                         );
@@ -165,21 +212,21 @@ export function createChunkedDecodingStream(): TransformStream<
                     }
                 } else if (state === 'trailer') {
                     const trailerLine = readLine();
-                    if (trailerLine === null) break; // Need more data
+                    if (trailerLine === null) break;
 
                     if (trailerLine === '') {
-                        // End of trailers
                         state = 'done';
                         controller.terminate();
                         return;
                     }
-                    // Continue reading trailer headers (ignore them for now)
                 }
             }
         },
 
         flush(controller) {
-            // If we have any pending data in an incomplete state, that's an error
+            // Clean up any remaining buffer
+            buffer = new Uint8Array(0);
+
             if (
                 state === 'data' && chunkBytesRead > 0 &&
                 chunkBytesRead < chunkSize
@@ -222,4 +269,63 @@ export function connectionToReadableStream(
             }
         },
     }, { highWaterMark: 0 });
+}
+
+export class StreamingResponseReader {
+    private _reader: ReadableStreamDefaultReader<Uint8Array>;
+    private _totalBytesRead = 0;
+    private _maxSize: number;
+
+    constructor(
+        stream: ReadableStream<Uint8Array>,
+        maxSize = 100 * 1024 * 1024,
+    ) {
+        this._reader = stream.getReader();
+        this._maxSize = maxSize;
+    }
+
+    async *readChunks(): AsyncGenerator<Uint8Array, void, unknown> {
+        try {
+            while (true) {
+                const { done, value } = await this._reader.read();
+
+                if (done) break;
+
+                this._totalBytesRead += value.length;
+
+                if (this._totalBytesRead > this._maxSize) {
+                    throw new Error(
+                        `Stream size limit exceeded: ${this._maxSize} bytes`,
+                    );
+                }
+
+                yield value;
+
+                // Yield control periodically for backpressure
+                if (this._totalBytesRead % (1024 * 1024) === 0) { // Every 1MB
+                    await new Promise<void>((resolve) =>
+                        globalThis.queueMicrotask(() => resolve())
+                    );
+                }
+            }
+        } finally {
+            this._reader.releaseLock();
+        }
+    }
+
+    async readToFile(filePath: string): Promise<void> {
+        const file = await Deno.open(filePath, { write: true, create: true });
+
+        try {
+            for await (const chunk of this.readChunks()) {
+                await file.write(chunk);
+            }
+        } finally {
+            file.close();
+        }
+    }
+
+    get bytesRead(): number {
+        return this._totalBytesRead;
+    }
 }

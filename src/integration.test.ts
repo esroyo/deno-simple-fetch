@@ -10,7 +10,7 @@ import {
 } from './streams.ts';
 
 Deno.test('Integration - HTTP Client with Agent Pool', async (t) => {
-    const { server, url } = await createTestServer(8093);
+    const { server, url } = await createTestServer();
 
     try {
         await t.step(
@@ -20,9 +20,10 @@ Deno.test('Integration - HTTP Client with Agent Pool', async (t) => {
 
                 // These should all use the same agent pool
                 const responses = await Promise.all([
-                    client.fetch(`${url}/text`),
-                    client.fetch(`${url}/json`),
-                    client.fetch(`${url}/echo`, {
+                    client.send({ url: `${url}/text`, method: 'GET' }),
+                    client.send({ url: `${url}/json`, method: 'GET' }),
+                    client.send({
+                        url: `${url}/echo`,
                         method: 'POST',
                         body: 'test',
                     }),
@@ -48,7 +49,10 @@ Deno.test('Integration - HTTP Client with Agent Pool', async (t) => {
             await using client = new HttpClient();
 
             // Test HTTP
-            const httpResponse = await client.fetch(`${url}/text`);
+            const httpResponse = await client.send({
+                url: `${url}/text`,
+                method: 'GET',
+            });
             assertEquals(httpResponse.status, 200);
             await httpResponse.text();
 
@@ -61,16 +65,23 @@ Deno.test('Integration - HTTP Client with Agent Pool', async (t) => {
 
             // Mix of different request types
             const requests = [
-                client.fetch(`${url}/text`),
-                client.fetch(`${url}/json`),
-                client.fetch(`${url}/echo`, {
+                client.send({ url: `${url}/text`, method: 'GET' }),
+                client.send({ url: `${url}/json`, method: 'GET' }),
+                client.send({
+                    url: `${url}/echo`,
                     method: 'POST',
-                    headers: { 'content-type': 'application/json' },
+                    headers: new Headers({
+                        'content-type': 'application/json',
+                    }),
                     body: JSON.stringify({ test: 'data' }),
                 }),
-                client.fetch(`${url}/echo`, {
+                client.send({
+                    url: `${url}/echo`,
                     method: 'PUT',
-                    body: new URLSearchParams({ key: 'value' }),
+                    headers: new Headers({
+                        'content-type': 'application/x-www-form-urlencoded',
+                    }),
+                    body: new URLSearchParams({ key: 'value' }).toString(),
                 }),
             ];
 
@@ -90,7 +101,7 @@ Deno.test('Integration - HTTP Client with Agent Pool', async (t) => {
 
 // Error resilience and edge cases
 Deno.test('Error Resilience and Edge Cases', async (t) => {
-    const { server, url } = await createTestServer(8094);
+    const { server, url } = await createTestServer();
 
     try {
         await t.step('agent handles connection drops gracefully', async () => {
@@ -122,9 +133,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
 
         await t.step('pool handles agent failures', async () => {
             // Create new server for this test
-            const { server: newServer, url: newUrl } = await createTestServer(
-                8095,
-            );
+            const { server: newServer, url: newUrl } = await createTestServer();
 
             try {
                 await using pool = createAgentPool(newUrl, { maxAgents: 3 });
@@ -175,7 +184,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
         await t.step('very large response handling', async () => {
             // Create a test server that returns large responses
             const { server: largeServer, url: largeUrl } =
-                await createTestServer(8096);
+                await createTestServer();
 
             // Override the /text endpoint to return large content
             const originalHandler = largeServer;
@@ -184,7 +193,10 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
                 await using client = new HttpClient();
 
                 // Test with chunked response endpoint
-                const response = await client.fetch(`${largeUrl}/chunked`);
+                const response = await client.send({
+                    url: `${largeUrl}/chunked`,
+                    method: 'GET',
+                });
                 assertEquals(response.status, 200);
 
                 const text = await response.text();
@@ -196,7 +208,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
 
         await t.step('concurrent abort signals', async () => {
             const { server: abortServer, url: abortUrl } =
-                await createTestServer(8097);
+                await createTestServer();
 
             try {
                 await using pool = createAgentPool(abortUrl, { maxAgents: 3 });
@@ -240,7 +252,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
 
 // Performance and stress tests
 Deno.test('Performance and Stress Tests', async (t) => {
-    const { server, url } = await createTestServer(8098);
+    const { server, url } = await createTestServer();
 
     try {
         await t.step('high concurrency stress test', async () => {
@@ -270,26 +282,7 @@ Deno.test('Performance and Stress Tests', async (t) => {
             const endTime = Date.now();
 
             assertEquals(results.length, numRequests);
-            console.log(
-                `Completed ${numRequests} requests in ${endTime - startTime}ms`,
-            );
         });
-
-        //         await t.step('memory usage with many requests', async () => {
-        //             await using client = new HttpClient();
-
-        //             // Make many sequential requests to test memory cleanup
-        //             for (let i = 0; i < 50; i++) {
-        //                 const response = await client.fetch(`${url}/text`);
-        //                 const text = await response.text();
-        //                 assertEquals(text, 'Hello, World!');
-
-        //                 // Force garbage collection if available (Deno specific)
-        //                 if (typeof gc !== 'undefined') {
-        //                     gc();
-        //                 }
-        //             }
-        //         });
 
         await t.step('connection reuse efficiency', async () => {
             using agent = createAgent(url);
@@ -309,7 +302,6 @@ Deno.test('Performance and Stress Tests', async (t) => {
             const totalTime = endTime - startTime;
 
             // Should be relatively fast due to connection reuse
-            console.log(`20 sequential requests took ${totalTime}ms`);
             assertEquals(totalTime < 5000, true); // Should complete in under 5 seconds
         });
     } finally {
@@ -498,11 +490,6 @@ Deno.test('Extended Stream Utilities Tests', async (t) => {
             offset += chunk.length;
         }
 
-        console.log(
-            'Encoded output:',
-            new TextDecoder().decode(combinedEncoded),
-        );
-
         // Now create a new stream from the encoded data and decode it
         const encodedDataStream = new ReadableStream({
             start(controller) {
@@ -524,7 +511,6 @@ Deno.test('Extended Stream Utilities Tests', async (t) => {
                 const { done, value } = await decodedReader.read();
                 if (done) break;
                 decodedChunks.push(value);
-                console.log('Decoded chunk:', new TextDecoder().decode(value));
             }
         } finally {
             decodedReader.releaseLock();
@@ -543,8 +529,6 @@ Deno.test('Extended Stream Utilities Tests', async (t) => {
         }
 
         const finalText = new TextDecoder().decode(combinedDecoded);
-        console.log('Final decoded text:', finalText);
-        console.log('Expected text:', chunks.join(''));
 
         assertEquals(finalText, chunks.join(''));
     });
@@ -622,11 +606,6 @@ Deno.test('Extended Stream Utilities Tests', async (t) => {
             offset += chunk.length;
         }
 
-        console.log(
-            'Single byte encoded:',
-            new TextDecoder().decode(combinedEncoded),
-        );
-
         // Now decode
         const encodedDataStream = new ReadableStream({
             start(controller) {
@@ -647,10 +626,6 @@ Deno.test('Extended Stream Utilities Tests', async (t) => {
                 const { done, value } = await decodedReader.read();
                 if (done) break;
                 decodedChunks.push(value);
-                console.log(
-                    'Single byte decoded chunk:',
-                    new TextDecoder().decode(value),
-                );
             }
         } finally {
             decodedReader.releaseLock();
@@ -669,15 +644,13 @@ Deno.test('Extended Stream Utilities Tests', async (t) => {
         }
 
         const finalText = new TextDecoder().decode(combinedDecoded);
-        console.log('Single byte final text:', finalText);
-
         assertEquals(finalText, data);
     });
 });
 
 // Final integration test
 Deno.test('Complete System Integration', async (t) => {
-    const { server, url } = await createTestServer(8099);
+    const { server, url } = await createTestServer();
 
     try {
         await t.step('end-to-end realistic usage scenario', async () => {
@@ -686,9 +659,10 @@ Deno.test('Complete System Integration', async (t) => {
             // Simulate a realistic application workflow
 
             // 1. Initial API call
-            const authResponse = await client.fetch(`${url}/echo`, {
+            const authResponse = await client.send({
+                url: `${url}/echo`,
                 method: 'POST',
-                headers: { 'content-type': 'application/json' },
+                headers: new Headers({ 'content-type': 'application/json' }),
                 body: JSON.stringify({ username: 'test', password: 'secret' }),
             });
             assertEquals(authResponse.status, 200);
@@ -699,9 +673,12 @@ Deno.test('Complete System Integration', async (t) => {
             const dataRequests = Array.from(
                 { length: 5 },
                 (_, i) =>
-                    client.fetch(`${url}/echo`, {
+                    client.send({
+                        url: `${url}/echo`,
                         method: 'GET',
-                        headers: { 'authorization': `Bearer token-${i}` },
+                        headers: new Headers({
+                            'authorization': `Bearer token-${i}`,
+                        }),
                     }).then((res) => res.json()),
             );
 
@@ -712,21 +689,28 @@ Deno.test('Complete System Integration', async (t) => {
             });
 
             // 3. File upload simulation
-            const uploadResponse = await client.fetch(`${url}/echo`, {
+            const uploadResponse = await client.send({
+                url: `${url}/echo`,
                 method: 'POST',
-                headers: { 'content-type': 'application/octet-stream' },
+                headers: new Headers({
+                    'content-type': 'application/octet-stream',
+                }),
                 body: new Uint8Array([1, 2, 3, 4, 5]),
             });
             assertEquals(uploadResponse.status, 200);
             await uploadResponse.json();
 
             // 4. Form submission
-            const formResponse = await client.fetch(`${url}/echo`, {
+            const formResponse = await client.send({
+                url: `${url}/echo`,
                 method: 'POST',
+                headers: new Headers({
+                    'content-type': 'application/x-www-form-urlencoded',
+                }),
                 body: new URLSearchParams({
                     name: 'John Doe',
                     email: 'john@example.com',
-                }),
+                }).toString(),
             });
             assertEquals(formResponse.status, 200);
             const formResult = await formResponse.json();
@@ -737,6 +721,187 @@ Deno.test('Complete System Integration', async (t) => {
 
             // 5. Clean shutdown
             await client.close();
+        });
+    } finally {
+        await server.shutdown();
+    }
+});
+
+// ============================================================================
+// Enhanced edge case testing
+// ============================================================================
+
+Deno.test('Edge Cases and Boundary Conditions', async (t) => {
+    const { server, url } = await createTestServer();
+
+    try {
+        await t.step('zero-length responses', async () => {
+            await using client = new HttpClient();
+
+            // Mock an endpoint that returns zero-length content
+            const response = await client.send({
+                url: `${url}/text`,
+                method: 'HEAD', // HEAD responses have no body
+            });
+
+            assertEquals(response.status, 200);
+            const text = await response.text();
+            assertEquals(text, '');
+        });
+
+        await t.step('very long URLs', async () => {
+            await using client = new HttpClient();
+
+            const longQuery = 'param=' + 'x'.repeat(1000);
+            const response = await client.send({
+                url: `${url}/echo?${longQuery}`,
+                method: 'GET',
+            });
+
+            assertEquals(response.status, 200);
+            const data = await response.json();
+            assertEquals(data.url.includes(longQuery), true);
+        });
+
+        await t.step('unicode in headers and body', async () => {
+            await using client = new HttpClient();
+
+            // According to RFC 7230 (HTTP/1.1 Message Syntax and Routing) and RFC 9110 (HTTP Semantics):
+            // HTTP header field values are defined as sequences of characters from the ISO-8859-1 (Latin-1) character set.
+            // UTF-8 or other encodings (like emojis or Chinese characters) are not valid unless explicitly encoded (e.g., base64, percent-encoding, or other schemes).
+
+            const unicodeText = 'Hello 世界 🌍 مرحبا';
+            const unicodeHeader = '测试 🎯';
+            const response = await client.send({
+                url: `${url}/echo`,
+                method: 'POST',
+                headers: new Headers({
+                    'X-Unicode-Header': encodeURIComponent(unicodeHeader),
+                    'Content-Type': 'text/plain; charset=utf-8',
+                }),
+                body: unicodeText,
+            });
+
+            assertEquals(response.status, 200);
+            const data = await response.json();
+            assertEquals(
+                decodeURIComponent(data.headers['x-unicode-header']),
+                unicodeHeader,
+            );
+        });
+
+        await t.step('rapid sequential requests', async () => {
+            using agent = createAgent(url);
+
+            const results = [];
+            for (let i = 0; i < 50; i++) {
+                const response = await agent.send({
+                    url: '/echo',
+                    method: 'POST',
+                    body: JSON.stringify({ sequence: i }),
+                });
+                const data = await response.json();
+                results.push(data);
+            }
+
+            assertEquals(results.length, 50);
+            assertEquals(results[0].method, 'POST');
+            assertEquals(results[49].method, 'POST');
+        });
+
+        await t.step('connection pool exhaustion and recovery', async () => {
+            await using pool = createAgentPool(url, { maxAgents: 2 });
+
+            // Exhaust the pool with slow requests
+            const slowRequests = Array.from({ length: 3 }, async () => {
+                const res = await pool.send({
+                    url: '/slow',
+                    method: 'GET',
+                });
+                await res.text();
+                return res;
+            });
+
+            // This should complete despite pool exhaustion
+            const results = await Promise.all(slowRequests);
+            assertEquals(results.length, 3);
+            results.forEach((response) => {
+                assertEquals(response.status, 200);
+            });
+        });
+    } finally {
+        await server.shutdown();
+    }
+});
+
+// ============================================================================
+// Performance and load testing
+// ============================================================================
+
+Deno.test('Performance Characteristics', async (t) => {
+    const { server, url } = await createTestServer();
+
+    try {
+        await t.step('memory usage with large responses', async () => {
+            await using client = new HttpClient({
+                maxResponseSize: 50 * 1024 * 1024, // 50MB limit
+            });
+
+            // Create a large response (simulate with repeated small responses)
+            const responses = await Promise.all(
+                Array.from({ length: 100 }, () =>
+                    client.send({
+                        url: `${url}/text`,
+                        method: 'GET',
+                    }).then((res) => res.text())),
+            );
+
+            assertEquals(responses.length, 100);
+            responses.forEach((text) => assertEquals(text, 'Hello, World!'));
+        });
+
+        await t.step('connection reuse efficiency', async () => {
+            using agent = createAgent(url);
+
+            const startTime = performance.now();
+
+            // Multiple requests on same connection
+            for (let i = 0; i < 100; i++) {
+                const response = await agent.send({
+                    url: '/text',
+                    method: 'GET',
+                });
+                await response.text();
+            }
+
+            const duration = performance.now() - startTime;
+
+            // Should be reasonably fast due to connection reuse
+            assertEquals(duration < 10000, true); // Less than 10 seconds
+        });
+
+        await t.step('concurrent request throughput', async () => {
+            await using pool = createAgentPool(url, { maxAgents: 10 });
+
+            const startTime = performance.now();
+            const concurrentRequests = 200;
+
+            const requests = Array.from(
+                { length: concurrentRequests },
+                (_, i) =>
+                    pool.send({
+                        url: '/echo',
+                        method: 'POST',
+                        body: JSON.stringify({ id: i }),
+                    }).then((res) => res.json()),
+            );
+
+            const results = await Promise.all(requests);
+            const duration = performance.now() - startTime;
+
+            assertEquals(results.length, concurrentRequests);
+            // console.log(`Processed ${concurrentRequests} requests in ${duration.toFixed(2)}ms`);
+            // console.log(`Throughput: ${(concurrentRequests / duration * 1000).toFixed(2)} req/sec`);
         });
     } finally {
         await server.shutdown();

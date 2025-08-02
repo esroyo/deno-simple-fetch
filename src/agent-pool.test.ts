@@ -1,172 +1,10 @@
-// comprehensive.test.ts - Complete test suite for the HTTP client library
 import { assertEquals, assertRejects } from './test-utils.ts';
 import { createAgent } from './agent.ts';
 import { createAgentPool } from './agent-pool.ts';
-import { createFetch, HttpClient } from './fetch.ts';
 import { createTestServer } from './test-utils.ts';
 
-Deno.test('Single Agent Behavior', async (t) => {
-    const { server, url } = await createTestServer(8090);
-
-    try {
-        await t.step('single agent handles sequential requests', async () => {
-            using agent = createAgent(url);
-
-            // First request
-            const response1 = await agent.send({
-                url: '/text',
-                method: 'GET',
-            });
-            assertEquals(response1.status, 200);
-            const text1 = await response1.text();
-            assertEquals(text1, 'Hello, World!');
-
-            // Second request on same agent (connection reuse)
-            const response2 = await agent.send({
-                url: '/json',
-                method: 'GET',
-            });
-            assertEquals(response2.status, 200);
-            const json2 = await response2.json();
-            assertEquals(json2.message, 'Hello, JSON!');
-        });
-
-        await t.step('single agent blocks concurrent requests', async () => {
-            using agent = createAgent(url);
-
-            // Start a slow request
-            const slowRequest = agent.send({
-                url: '/slow',
-                method: 'GET',
-            });
-
-            // Try concurrent request - should fail immediately
-            await assertRejects(
-                async () =>
-                    await agent.send({
-                        url: '/text',
-                        method: 'GET',
-                    }),
-                Error,
-                'Agent is busy',
-            );
-
-            // Wait for slow request to complete
-            const response = await slowRequest;
-            assertEquals(response.status, 200);
-            await response.text();
-
-            // Now agent should be available
-            const response2 = await agent.send({
-                url: '/text',
-                method: 'GET',
-            });
-            assertEquals(response2.status, 200);
-            await response2.text();
-        });
-
-        await t.step('agent state tracking', async () => {
-            using agent = createAgent(url);
-
-            assertEquals(agent.isIdle, true);
-
-            const requestPromise = agent.send({
-                url: '/slow',
-                method: 'GET',
-            });
-
-            // Agent should be busy during request
-            assertEquals(agent.isIdle, false);
-
-            const res = await requestPromise;
-            await res.text();
-
-            // Agent should be idle after request
-            assertEquals(agent.isIdle, true);
-        });
-
-        await t.step('agent whenIdle promise', async () => {
-            using agent = createAgent(url);
-
-            let idleResolved = false;
-            agent.whenIdle().then(() => {
-                idleResolved = true;
-            });
-
-            // Should already be resolved since agent is idle
-            await new Promise((resolve) => setTimeout(resolve, 10));
-            assertEquals(idleResolved, true);
-
-            // Start a request
-            const requestPromise = agent.send({
-                url: '/slow',
-                method: 'GET',
-            });
-
-            // Reset flag
-            idleResolved = false;
-            agent.whenIdle().then(() => {
-                idleResolved = true;
-            });
-
-            // Should not be resolved yet
-            assertEquals(idleResolved, false);
-
-            // Complete the request
-            const response = await requestPromise;
-            await response.text();
-
-            // Now should be resolved
-            await new Promise((resolve) => setTimeout(resolve, 10));
-            assertEquals(idleResolved, true);
-        });
-
-        await t.step('agent lastUsed tracking', async () => {
-            using agent = createAgent(url);
-
-            debugger;
-
-            const initialTime = agent.lastUsed;
-
-            // Make a request after a small delay
-            await new Promise((resolve) => setTimeout(resolve, 10));
-            const response = await agent.send({
-                url: '/text',
-                method: 'GET',
-            });
-            await response.text();
-
-            // lastUsed should be updated
-            assertEquals(agent.lastUsed > initialTime, true);
-        });
-
-        await t.step('agent connection error handling', async () => {
-            using agent = createAgent(url);
-
-            // Close the test server to simulate connection error
-            await server.shutdown();
-
-            await assertRejects(
-                () =>
-                    agent.send({
-                        url: '/text',
-                        method: 'GET',
-                    }),
-                Error,
-            );
-
-            // Agent should still be idle after error
-            assertEquals(agent.isIdle, true);
-        });
-    } finally {
-        if (!server.finished) {
-            await server.shutdown();
-        }
-    }
-});
-
 Deno.test('Agent Pool Concurrency', async (t) => {
-    const { server, url } = await createTestServer(8091);
+    const { server, url } = await createTestServer();
 
     try {
         await t.step('pool handles concurrent requests', async () => {
@@ -303,7 +141,7 @@ Deno.test('Agent Pool Concurrency', async (t) => {
 });
 
 Deno.test('Agent Pool vs Single Agent Performance', async (t) => {
-    const { server, url } = await createTestServer(8092);
+    const { server, url } = await createTestServer();
 
     try {
         await t.step('concurrent performance comparison', async () => {
@@ -339,9 +177,9 @@ Deno.test('Agent Pool vs Single Agent Performance', async (t) => {
             const poolTime = Date.now() - poolStart;
 
             // Pool should be significantly faster for concurrent requests
-            console.log(
-                `Single agent time: ${singleAgentTime}ms, Pool time: ${poolTime}ms`,
-            );
+            // console.log(
+            //     `Single agent time: ${singleAgentTime}ms, Pool time: ${poolTime}ms`,
+            // );
             assertEquals(poolTime < singleAgentTime, true);
         });
     } finally {

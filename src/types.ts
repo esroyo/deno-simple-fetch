@@ -10,6 +10,13 @@ export interface SendOptions {
     signal?: AbortSignal;
 }
 
+export interface StreamingOptions {
+    maxResponseSize?: number; // Default: 100MB
+    maxChunkSize?: number; // Default: 64KB
+    backpressureThreshold?: number; // Default: 1MB
+    enableBackpressure?: boolean; // Default: true
+}
+
 export interface ResponseWithExtras {
     proto: string;
     status: number;
@@ -50,7 +57,7 @@ export interface AgentPool {
     close(): Promise<void>;
     hostname: string;
     port: number;
-    send(options: SendOptions): Promise<ResponseWithExtras>;
+    send(options: SendOptions & StreamingOptions): Promise<ResponseWithExtras>;
 }
 
 // Standard fetch API types

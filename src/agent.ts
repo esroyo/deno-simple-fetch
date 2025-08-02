@@ -1,4 +1,9 @@
-import { Agent, ResponseWithExtras, SendOptions } from './types.ts';
+import {
+    Agent,
+    ResponseWithExtras,
+    SendOptions,
+    StreamingOptions,
+} from './types.ts';
 import { ConnectionClosedError, UnexpectedEofError } from './errors.ts';
 import { readResponse, writeRequest } from './http-io.ts';
 import { createAbortablePromise } from './utils.ts';
@@ -51,12 +56,16 @@ export function createAgent(
                 : Deno.connect(connectOptions));
     };
 
-    async function send(sendOptions: SendOptions): Promise<ResponseWithExtras> {
+    async function send(
+        sendOptions: SendOptions & StreamingOptions,
+    ): Promise<ResponseWithExtras> {
         if (isBusy) {
             throw new Error(
                 'Agent is busy - use agent pool for concurrent requests',
             );
         }
+
+        sendOptions.signal?.throwIfAborted();
 
         isBusy = true;
         whenIdle = Promise.withResolvers<void>();
@@ -64,10 +73,6 @@ export function createAgent(
         lastController = new AbortController();
 
         try {
-            if (!connection) {
-                await connect();
-            }
-
             const {
                 url: requestUrl,
                 method,
@@ -76,22 +81,27 @@ export function createAgent(
                 signal: requestSignal,
             } = sendOptions;
             const fullUrl = new URL(requestUrl, baseUrl);
-            if (
-                URL.canParse(requestUrl) &&
-                !requestUrl.startsWith(fullUrl.origin)
-            ) {
+
+            if (fullUrl.origin !== baseUrl) {
                 throw new Error(
                     `Request to send "${requestUrl}" on a ${baseUrl} connection`,
+                );
+            }
+
+            const signal = requestSignal
+                ? AbortSignal.any([requestSignal, lastController.signal])
+                : lastController.signal;
+
+            if (!connection) {
+                await createAbortablePromise(
+                    connect(),
+                    { signal },
                 );
             }
 
             if (!connection) {
                 throw new Error('Connection not established');
             }
-
-            const signal = requestSignal
-                ? AbortSignal.any([requestSignal, lastController.signal])
-                : lastController.signal;
 
             await createAbortablePromise(
                 writeRequest(connection, {
@@ -121,7 +131,7 @@ export function createAgent(
                 status === 204 || status === 304;
 
             const response = await createAbortablePromise(
-                readResponse(connection, shouldIgnoreBody, onDone),
+                readResponse(connection, shouldIgnoreBody, sendOptions, onDone),
                 { signal },
             ) as ResponseWithExtras;
             response.url = fullUrl.toString();
@@ -146,11 +156,17 @@ export function createAgent(
             isBusy = false;
             lastController = undefined;
             whenIdle.resolve();
-            if (error instanceof UnexpectedEofError) {
-                connection?.close();
-                connection = undefined;
+
+            connection?.close();
+            connection = undefined;
+
+            if (
+                Error.isError(error) &&
+                error.name === 'UnexpectedEofError'
+            ) {
                 throw new ConnectionClosedError();
             }
+
             throw error;
         }
     }
