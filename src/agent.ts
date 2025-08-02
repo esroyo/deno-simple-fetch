@@ -8,12 +8,11 @@ const PORT_MAP: Record<string, number> = {
     'https:': 443,
 };
 
-export function createAgent(
-    baseUrl: string,
-): Agent {
+export function createAgent(baseUrl: string): Agent {
     const registry = new FinalizationRegistry<() => void>((cleanup) =>
         cleanup()
     );
+
     let connection: Deno.Conn | undefined;
     let isBusy = false;
     let lastController: AbortController | undefined;
@@ -35,9 +34,30 @@ export function createAgent(
     const port = url.port ? parseInt(url.port) : PORT_MAP[url.protocol];
     const isSecure = url.protocol === 'https:';
 
-    if (port === undefined) {
-        throw new Error(`Unexpected protocol: ${url.protocol}`);
-    }
+    const resetToIdle = () => {
+        isBusy = false;
+        lastUsedTime = Date.now();
+        whenIdle.resolve();
+        lastController = undefined;
+    };
+
+    const setBusy = () => {
+        isBusy = true;
+        lastUsedTime = Date.now();
+        whenIdle = Promise.withResolvers<void>();
+        lastController = new AbortController();
+    };
+
+    const closeConnection = () => {
+        connection?.close();
+        connection = undefined;
+    };
+
+    const forceClose = () => {
+        lastController?.abort();
+        closeConnection();
+        resetToIdle();
+    };
 
     const connect = async () => {
         if (connection) return;
@@ -54,9 +74,7 @@ export function createAgent(
                 : Deno.connect(connectOptions));
     };
 
-    async function send(
-        sendOptions: SendOptions,
-    ): Promise<Response> {
+    async function send(sendOptions: SendOptions): Promise<Response> {
         if (isBusy) {
             throw new Error(
                 'Agent is busy - use agent pool for concurrent requests',
@@ -64,11 +82,7 @@ export function createAgent(
         }
 
         sendOptions.signal?.throwIfAborted();
-
-        isBusy = true;
-        whenIdle = Promise.withResolvers<void>();
-        lastUsedTime = Date.now();
-        lastController = new AbortController();
+        setBusy();
 
         try {
             const {
@@ -87,14 +101,11 @@ export function createAgent(
             }
 
             const signal = requestSignal
-                ? AbortSignal.any([requestSignal, lastController.signal])
-                : lastController.signal;
+                ? AbortSignal.any([requestSignal, lastController!.signal])
+                : lastController!.signal;
 
             if (!connection) {
-                await createAbortablePromise(
-                    connect(),
-                    { signal },
-                );
+                await createAbortablePromise(connect(), { signal });
             }
 
             if (!connection) {
@@ -119,13 +130,9 @@ export function createAgent(
                 finalized = true;
 
                 if (forceClose) {
-                    connection?.close();
-                    connection = undefined;
+                    closeConnection();
                 }
-                lastUsedTime = Date.now();
-                isBusy = false;
-                lastController = undefined;
-                whenIdle.resolve();
+                resetToIdle();
             };
 
             const isHeadRequest = method.toUpperCase() === 'HEAD';
@@ -137,6 +144,7 @@ export function createAgent(
                 readResponse(connection, shouldIgnoreBody, onDone),
                 { signal },
             );
+
             Object.defineProperty(response, 'url', {
                 value: fullUrl.toString(),
                 writable: false,
@@ -171,18 +179,9 @@ export function createAgent(
 
             return response;
         } catch (error) {
-            lastUsedTime = Date.now();
-            isBusy = false;
-            lastController = undefined;
-            whenIdle.resolve();
+            forceClose();
 
-            connection?.close();
-            connection = undefined;
-
-            if (
-                Error.isError(error) &&
-                error.name === 'UnexpectedEofError'
-            ) {
+            if (Error.isError(error) && error.name === 'UnexpectedEofError') {
                 throw new ConnectionClosedError();
             }
 
@@ -190,20 +189,9 @@ export function createAgent(
         }
     }
 
-    function close() {
-        if (lastController) {
-            lastController.abort();
-            lastController = undefined;
-        }
-        connection?.close();
-        connection = undefined;
-        isBusy = false;
-        whenIdle.resolve();
-    }
-
     return {
-        [Symbol.dispose]: close,
-        close,
+        [Symbol.dispose]: forceClose,
+        close: forceClose,
         hostname,
         port,
         send,
