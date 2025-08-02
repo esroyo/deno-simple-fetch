@@ -3,16 +3,31 @@ import { createPool } from 'generic-pool';
 import { Agent, AgentPool, AgentPoolOptions, SendOptions } from './types.ts';
 import { createAgent } from './agent.ts';
 
+const defaultEvictionInterval = 10_000;
+const defaultMax = Number.MAX_SAFE_INTEGER;
+const defaultIdleTimeout = 30_000;
+
 export function createAgentPool(
     baseUrl: string,
     options: AgentPoolOptions = {},
 ): AgentPool {
-    const {
-        poolMaxPerHost = Number.MAX_SAFE_INTEGER,
-        poolIdleTimeout = 30_000,
-    } = options;
-
     const poolUrl = new URL(baseUrl);
+
+    const evictionRunIntervalMillis = options.poolIdleTimeout !== false
+        ? Math.min(
+            options.poolIdleTimeout || defaultEvictionInterval,
+            defaultEvictionInterval,
+        )
+        : 0;
+    const max = options.poolMaxPerHost
+        ? Math.max(1, options.poolMaxPerHost)
+        : defaultMax;
+    const softIdleTimeoutMillis = options.poolIdleTimeout !== false
+        ? Math.max(1, options.poolIdleTimeout || defaultIdleTimeout)
+        : -1;
+    const min = softIdleTimeoutMillis > 0 && options.poolMaxIdlePerHost
+        ? Math.max(0, options.poolMaxIdlePerHost)
+        : 0;
 
     if (poolUrl.protocol !== 'http:' && poolUrl.protocol !== 'https:') {
         throw new Error(
@@ -28,19 +43,11 @@ export function createAgentPool(
             agent.close();
         },
     }, {
-        // * number - max amount of agents allowed
-        // * undefined - not set will be interpreted by generic-pool as 1
-        max: poolMaxPerHost ? Math.max(1, poolMaxPerHost) : undefined,
-        min: 0,
-        softIdleTimeoutMillis: 60_000,
-        // * false - an agent/connection is never considered idle
-        // * number - amount of ms an agent has not been aquired to consider it idle
-        idleTimeoutMillis: poolIdleTimeout || undefined,
-        // * false - completely deactivate eviction
-        // * number - minimum ms pace of the eviction
-        evictionRunIntervalMillis: poolIdleTimeout
-            ? Math.min(poolIdleTimeout, 30_000)
-            : undefined,
+        autostart: false,
+        evictionRunIntervalMillis,
+        softIdleTimeoutMillis,
+        max,
+        min,
     });
 
     let releaseAgentFns: Array<(forceClose?: boolean) => Promise<void>> = [];

@@ -25,6 +25,10 @@ export interface Agent {
 // Agent pool configuration
 export interface AgentPoolOptions {
     /**
+     * Sets the maximum number of idle connections per host allowed in the pool.
+     */
+    poolMaxIdlePerHost?: number;
+    /**
      * Sets the maximum number of connections per host allowed in the pool.
      * Default to no limits.
      */
