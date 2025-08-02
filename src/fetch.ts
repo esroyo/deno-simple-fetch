@@ -1,8 +1,15 @@
-import type { AgentPool, RequestInit, SendOptions } from './types.ts';
+import type {
+    AgentPool,
+    AgentPoolOptions,
+    RequestInit,
+    SendOptions,
+} from './types.ts';
 import { createAgentPool } from './agent-pool.ts';
 
 export class HttpClient {
     protected _agentPools: Record<string, AgentPool> = {};
+
+    constructor(protected _agentPoolOptions: AgentPoolOptions = {}) {}
 
     async send(
         options: SendOptions,
@@ -30,7 +37,7 @@ export class HttpClient {
     ): AgentPool {
         const origin = new URL(url).origin;
         return this._agentPools[origin] = this._agentPools[origin] ||
-            createAgentPool(origin);
+            createAgentPool(origin, this._agentPoolOptions);
     }
 }
 

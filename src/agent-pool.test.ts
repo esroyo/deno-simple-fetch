@@ -8,7 +8,7 @@ Deno.test('Agent Pool Concurrency', async (t) => {
 
     try {
         await t.step('pool handles concurrent requests', async () => {
-            await using pool = createAgentPool(url, { maxAgents: 5 });
+            await using pool = createAgentPool(url, { poolMaxPerHost: 5 });
 
             // Send multiple concurrent requests
             const requests = Array.from({ length: 10 }, (_, i) =>
@@ -33,7 +33,7 @@ Deno.test('Agent Pool Concurrency', async (t) => {
         });
 
         await t.step('pool with limited agents', async () => {
-            await using pool = createAgentPool(url, { maxAgents: 2 });
+            await using pool = createAgentPool(url, { poolMaxPerHost: 2 });
 
             // Send more requests than available agents
             const startTime = Date.now();
@@ -58,8 +58,8 @@ Deno.test('Agent Pool Concurrency', async (t) => {
 
         await t.step('pool agent timeout and cleanup', async () => {
             await using pool = createAgentPool(url, {
-                maxAgents: 3,
-                idleTimeout: 100, // Very short timeout for testing
+                poolMaxPerHost: 3,
+                poolIdleTimeout: 100, // Very short timeout for testing
             });
 
             // Make some requests to create agents
@@ -82,7 +82,7 @@ Deno.test('Agent Pool Concurrency', async (t) => {
         });
 
         await t.step('pool abort signal handling', async () => {
-            await using pool = createAgentPool(url, { maxAgents: 2 });
+            await using pool = createAgentPool(url, { poolMaxPerHost: 2 });
             const controller = new AbortController();
 
             const requestPromise = pool.send({
@@ -98,7 +98,7 @@ Deno.test('Agent Pool Concurrency', async (t) => {
         });
 
         await t.step('pool proper resource cleanup', async () => {
-            const pool = createAgentPool(url, { maxAgents: 3 });
+            const pool = createAgentPool(url, { poolMaxPerHost: 3 });
 
             // Make several requests
             const requests = Array.from({ length: 5 }, () =>
@@ -124,7 +124,7 @@ Deno.test('Agent Pool Concurrency', async (t) => {
         });
 
         await t.step('pool Symbol.asyncDispose', async () => {
-            await using pool = createAgentPool(url, { maxAgents: 2 });
+            await using pool = createAgentPool(url, { poolMaxPerHost: 2 });
 
             const response = await pool.send({
                 url: '/text',
@@ -162,7 +162,7 @@ Deno.test('Agent Pool vs Single Agent Performance', async (t) => {
 
             // Test with agent pool (concurrent)
             const poolStart = Date.now();
-            await using pool = createAgentPool(url, { maxAgents: 5 });
+            await using pool = createAgentPool(url, { poolMaxPerHost: 5 });
 
             const poolRequests = Array.from(
                 { length: numRequests },

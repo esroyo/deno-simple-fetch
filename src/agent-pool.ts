@@ -8,8 +8,8 @@ export function createAgentPool(
     options: AgentPoolOptions = {},
 ): AgentPool {
     const {
-        maxAgents = 10,
-        idleTimeout = 30_000,
+        poolMaxPerHost = Number.MAX_SAFE_INTEGER,
+        poolIdleTimeout = 30_000,
     } = options;
 
     const poolUrl = new URL(baseUrl);
@@ -28,10 +28,19 @@ export function createAgentPool(
             agent.close();
         },
     }, {
-        max: Math.max(1, maxAgents),
+        // * number - max amount of agents allowed
+        // * undefined - not set will be interpreted by generic-pool as 1
+        max: poolMaxPerHost ? Math.max(1, poolMaxPerHost) : undefined,
         min: 0,
-        idleTimeoutMillis: idleTimeout,
-        evictionRunIntervalMillis: Math.min(idleTimeout, 30_000),
+        softIdleTimeoutMillis: 60_000,
+        // * false - an agent/connection is never considered idle
+        // * number - amount of ms an agent has not been aquired to consider it idle
+        idleTimeoutMillis: poolIdleTimeout || undefined,
+        // * false - completely deactivate eviction
+        // * number - minimum ms pace of the eviction
+        evictionRunIntervalMillis: poolIdleTimeout
+            ? Math.min(poolIdleTimeout, 30_000)
+            : undefined,
     });
 
     let releaseAgentFns: Array<(forceClose?: boolean) => Promise<void>> = [];

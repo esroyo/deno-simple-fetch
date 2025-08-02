@@ -135,7 +135,9 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
             const { server: newServer, url: newUrl } = await createTestServer();
 
             try {
-                await using pool = createAgentPool(newUrl, { maxAgents: 3 });
+                await using pool = createAgentPool(newUrl, {
+                    poolMaxPerHost: 3,
+                });
 
                 // Make some successful requests
                 const successfulRequests = Array.from(
@@ -186,7 +188,9 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
                 await createTestServer();
 
             try {
-                await using pool = createAgentPool(abortUrl, { maxAgents: 3 });
+                await using pool = createAgentPool(abortUrl, {
+                    poolMaxPerHost: 3,
+                });
 
                 const controllers = Array.from(
                     { length: 5 },
@@ -231,7 +235,7 @@ Deno.test('Performance and Stress Tests', async (t) => {
 
     try {
         await t.step('high concurrency stress test', async () => {
-            await using pool = createAgentPool(url, { maxAgents: 10 });
+            await using pool = createAgentPool(url, { poolMaxPerHost: 10 });
 
             const numRequests = 100;
             const requests = Array.from(
@@ -654,7 +658,7 @@ Deno.test('Edge Cases and Boundary Conditions', async (t) => {
         });
 
         await t.step('connection pool exhaustion and recovery', async () => {
-            await using pool = createAgentPool(url, { maxAgents: 2 });
+            await using pool = createAgentPool(url, { poolMaxPerHost: 2 });
 
             // Exhaust the pool with slow requests
             const slowRequests = Array.from({ length: 3 }, async () => {
@@ -707,7 +711,7 @@ Deno.test('Performance Characteristics', async (t) => {
         });
 
         await t.step('concurrent request throughput', async () => {
-            await using pool = createAgentPool(url, { maxAgents: 10 });
+            await using pool = createAgentPool(url, { poolMaxPerHost: 10 });
 
             const startTime = performance.now();
             const concurrentRequests = 200;

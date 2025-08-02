@@ -24,8 +24,16 @@ export interface Agent {
 
 // Agent pool configuration
 export interface AgentPoolOptions {
-    maxAgents?: number;
-    idleTimeout?: number;
+    /**
+     * Sets the maximum number of connections per host allowed in the pool.
+     * Default to no limits.
+     */
+    poolMaxPerHost?: number;
+    /**
+     * Set an optional timeout for idle sockets being kept-alive.
+     * Set to false to disable the timeout. Defaults to 30s.
+     */
+    poolIdleTimeout?: number | false;
 }
 
 // Agent pool interface (handles concurrency)
