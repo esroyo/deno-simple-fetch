@@ -9,14 +9,14 @@ export class HttpClient {
     ): Promise<Response> {
         // Use existing pool or create temporary one
         const agentPool = this._getOrCreateAgentPool(options.url);
-        const response = await agentPool.send(options);
-        return response;
+        return agentPool.send(options);
     }
 
     async close(): Promise<void> {
         await Promise.all(
             Object.entries(this._agentPools).map(([key, agentPool]) =>
-                agentPool.close().then(() => delete this._agentPools[key])
+                agentPool.close()
+                    .then(() => delete this._agentPools[key])
             ),
         );
     }
@@ -37,10 +37,7 @@ export class HttpClient {
 function normalizeHeaders(headersInit?: HeadersInit): Headers {
     if (!headersInit) return new Headers();
     if (headersInit instanceof Headers) return headersInit;
-    if (Array.isArray(headersInit)) {
-        return new Headers(headersInit);
-    }
-    return new Headers(Object.entries(headersInit));
+    return new Headers(headersInit);
 }
 
 function processBody(
@@ -87,14 +84,13 @@ async function fetchImpl(
     const processedBody = processBody(body, headers);
     const { client } = init;
 
-    const response = await client.send({
+    return client.send({
         url,
         method,
         headers,
         body: processedBody,
         signal,
     });
-    return response;
 }
 
 // Factory function for creating bound fetch function
