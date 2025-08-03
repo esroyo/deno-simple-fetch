@@ -1,5 +1,7 @@
 # deno-simple-fetch
 
+[![codecov](https://codecov.io/gh/esroyo/deno-simple-fetch/graph/badge.svg?token=HVROUGXKTD)](https://codecov.io/gh/esroyo/deno-simple-fetch)
+
 A simple HTTP client for Deno with connection pooling and manual redirect handling.
 
 ### Why this library?
