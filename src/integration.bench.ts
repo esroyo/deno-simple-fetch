@@ -128,35 +128,38 @@ Deno.bench('This library with an internal single-usage Agent', async (b) => {
 
 const agentPool = createAgentPool(new URL(url));
 
-Deno.bench('This library with the internal Agent pool (not fetch API)', async (b) => {
-    await onReady();
+Deno.bench(
+    'This library with the internal Agent pool (not fetch API)',
+    async (b) => {
+        await onReady();
 
-    const urls = [
-        new URL('/text', url),
-        new URL('/json', url),
-        new URL('/echo', url),
-    ];
+        const urls = [
+            new URL('/text', url),
+            new URL('/json', url),
+            new URL('/echo', url),
+        ];
 
-    b.start();
+        b.start();
 
-    // These should all use the same agent pool
-    const responses = await Promise.all([
-        agentPool.send({ url: urls[0], method: 'GET' }),
-        agentPool.send({ url: urls[1], method: 'GET' }),
-        agentPool.send({ url: urls[2], method: 'POST', body: 'test' }),
-    ]);
+        // These should all use the same agent pool
+        const responses = await Promise.all([
+            agentPool.send({ url: urls[0], method: 'GET' }),
+            agentPool.send({ url: urls[1], method: 'GET' }),
+            agentPool.send({ url: urls[2], method: 'POST', body: 'test' }),
+        ]);
 
-    const [_text, _json, _echo] = await Promise.all([
-        responses[0].text(),
-        responses[1].json(),
-        responses[2].json(),
-    ]);
+        const [_text, _json, _echo] = await Promise.all([
+            responses[0].text(),
+            responses[1].json(),
+            responses[2].json(),
+        ]);
 
-    b.end();
+        b.end();
 
-    assertEquals(_text, 'Hello, World!');
-    assertEquals(_json, { message: 'Hello, JSON!' });
-});
+        assertEquals(_text, 'Hello, World!');
+        assertEquals(_json, { message: 'Hello, JSON!' });
+    },
+);
 
 Deno.bench('Node "request" package', async (b) => {
     await onReady();
