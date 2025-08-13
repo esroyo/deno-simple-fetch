@@ -1,24 +1,24 @@
 {
-  "name": "@esroyo/deno-simple-fetch",
-  "version": "0.1.0",
-  "exports": "./mod.ts",
-  "tasks": {
-        "bench": "deno bench -A",
-        "dev": "deno test --watch",
-        "coverage": "deno task test --clean --reporter=dot --coverage=coverage && deno coverage --lcov --output=coverage.lcov --exclude='src/test-utils.ts|vendor' coverage && genhtml -o coverage/report coverage.lcov",
-        "fmt": "deno fmt src/",
-        "release": "deno run -A npm:commit-and-tag-version && git push --follow-tags origin main && deno publish",
-        "release:dry-run": "deno run -A npm:commit-and-tag-version --dry-run && deno publish --dry-run --allow-dirty",
-        "test": "deno test -A --parallel --v8-flags=\"--expose-gc\""
-    },
-    "fmt": {
-        "indentWidth": 4,
-        "singleQuote": true
-  },
-  "license": "MIT",
-  "imports": {
-        "@std/assert": "jsr:@std/assert@1.0.6",
-        "@std/testing": "jsr:@std/testing@1.0.4",
-        "generic-pool": "jsr:@esroyo/generic-pool@3.10.1"
-  }
+      "name": "@esroyo/deno-simple-fetch",
+      "version": "0.1.0",
+      "exports": "./mod.ts",
+      "tasks": {
+            "bench": "deno bench -A",
+            "dev": "deno test --watch",
+            "coverage": "deno task test --clean --reporter=dot --coverage=coverage && deno coverage --lcov --output=coverage.lcov --exclude='src/test-utils.ts|vendor' coverage && genhtml -o coverage/report coverage.lcov",
+            "fmt": "deno fmt src/",
+            "release": "deno run -A npm:commit-and-tag-version && git push --follow-tags origin main && deno publish",
+            "release:dry-run": "deno run -A npm:commit-and-tag-version --dry-run && deno publish --dry-run --allow-dirty",
+            "test": "deno test -A --parallel --v8-flags=\"--expose-gc\""
+      },
+      "fmt": {
+            "indentWidth": 4,
+            "singleQuote": true
+      },
+      "license": "MIT",
+      "imports": {
+            "@std/assert": "jsr:@std/assert@1.0.6",
+            "@std/testing": "jsr:@std/testing@1.0.4",
+            "generic-pool": "jsr:@esroyo/generic-pool@3.10.1"
+      }
 }
