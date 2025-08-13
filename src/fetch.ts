@@ -14,9 +14,7 @@ export class HttpClient {
     async send(
         options: SendOptions,
     ): Promise<Response> {
-        // Use existing pool or create temporary one
-        const agentPool = this._getOrCreateAgentPool(options.url);
-        return agentPool.send(options);
+        return this._getOrCreateAgentPool(options.url).send(options);
     }
 
     async close(): Promise<void> {
@@ -33,11 +31,11 @@ export class HttpClient {
     }
 
     protected _getOrCreateAgentPool(
-        url: string,
+        url: URL,
     ): AgentPool {
-        const origin = new URL(url).origin;
+        const { origin } = url;
         return this._agentPools[origin] = this._agentPools[origin] ||
-            createAgentPool(origin, this._agentPoolOptions);
+            createAgentPool(url, this._agentPoolOptions);
     }
 }
 
@@ -79,24 +77,17 @@ async function fetchImpl(
     input: RequestInfo | URL,
     init: RequestInit & { client: HttpClient },
 ): Promise<Response> {
-    const url = input instanceof Request ? input.url : input.toString();
-    const {
-        method = 'GET',
-        headers: headersInit,
-        body,
-        signal,
-    } = init;
-
-    const headers = normalizeHeaders(headersInit);
-    const processedBody = processBody(body, headers);
-    const { client } = init;
-
-    return client.send({
+    const url = input instanceof URL
+        ? input
+        : new URL(input instanceof Request ? input.url : input);
+    const headers = normalizeHeaders(init.headers);
+    const body = processBody(init.body, headers);
+    return init.client.send({
         url,
-        method,
+        method: init.method || 'GET',
         headers,
-        body: processedBody,
-        signal,
+        body,
+        signal: init.signal,
     });
 }
 

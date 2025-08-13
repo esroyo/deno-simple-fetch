@@ -124,3 +124,31 @@ try {
   await fetch.close();
 }
 ```
+
+## Performance
+
+Just 2x slower than the built-in `fetch`:
+```
+$ deno bench -A
+    CPU | AMD Ryzen 7 PRO 6850U with Radeon Graphics
+Runtime | Deno 2.4.3 (x86_64-unknown-linux-gnu)
+```
+
+| benchmark                                                   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ----------------------------------------------------------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
+| Built-in Deno fetch (as-is)                                 |        373.4 µs |         2,678 | (286.5 µs …   3.7 ms) | 373.6 µs | 650.2 µs |   2.0 ms |
+| Built-in Deno fetch (HTTP1 Client)                          |        341.2 µs |         2,931 | (262.4 µs …   3.1 ms) | 354.5 µs | 564.5 µs | 671.9 µs |
+| **This library with fetch API**                             |        587.9 µs |         1,701 | (482.7 µs …   3.8 ms) | 601.5 µs |   1.6 ms |   1.8 ms |
+| This library with an internal single-usage Agent            |          1.3 ms |         794.1 | (649.1 µs …  52.2 ms) | 868.1 µs |  41.1 ms |  48.4 ms |
+| This library with the internal Agent pool (not fetch API)   |        523.2 µs |         1,911 | (454.0 µs …   3.0 ms) | 518.5 µs | 801.7 µs |   2.0 ms |
+| Node "request" package                                      |          3.1 ms |         326.9 | (  1.5 ms …  12.4 ms) |   3.4 ms |   5.2 ms |  12.4 ms |
+
+```
+summary
+  Built-in Deno fetch (HTTP1 Client)
+     1.09x faster than Built-in Deno fetch (as-is)
+     1.53x faster than This library with the internal Agent pool (not fetch API)
+     1.72x faster than This library with fetch API
+     3.69x faster than This library with an internal single-usage Agent
+     8.97x faster than Node "request" package
+```

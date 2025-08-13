@@ -8,10 +8,11 @@ const PORT_MAP: Record<string, number> = {
     'https:': 443,
 };
 
-export function createAgent(baseUrl: string): Agent {
+export function createAgent(baseUrl: URL): Agent {
     const registry = new FinalizationRegistry<() => void>((cleanup) =>
         cleanup()
     );
+    const baseUrlOrigin = baseUrl.origin;
 
     let connection: Deno.Conn | undefined;
     let isBusy = false;
@@ -20,30 +21,27 @@ export function createAgent(baseUrl: string): Agent {
         promise: Promise.resolve(),
         resolve: () => {},
     };
-    let lastUsedTime = Date.now();
 
-    const url = new URL(baseUrl);
-
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    if (baseUrl.protocol !== 'http:' && baseUrl.protocol !== 'https:') {
         throw new Error(
-            `Unsupported protocol: ${url.protocol}. Only http: and https: are supported.`,
+            `Unsupported protocol: ${baseUrl.protocol}. Only http: and https: are supported.`,
         );
     }
 
-    const hostname = url.hostname;
-    const port = url.port ? parseInt(url.port) : PORT_MAP[url.protocol];
-    const isSecure = url.protocol === 'https:';
+    const hostname = baseUrl.hostname;
+    const port = baseUrl.port
+        ? parseInt(baseUrl.port)
+        : PORT_MAP[baseUrl.protocol];
+    const isSecure = baseUrl.protocol === 'https:';
 
     const resetToIdle = () => {
         isBusy = false;
-        lastUsedTime = Date.now();
         whenIdle.resolve();
         lastController = undefined;
     };
 
     const setBusy = () => {
         isBusy = true;
-        lastUsedTime = Date.now();
         whenIdle = Promise.withResolvers<void>();
         lastController = new AbortController();
     };
@@ -86,17 +84,16 @@ export function createAgent(baseUrl: string): Agent {
 
         try {
             const {
-                url: requestUrl,
+                url,
                 method,
                 headers,
                 body,
                 signal: requestSignal,
             } = sendOptions;
-            const fullUrl = new URL(requestUrl, baseUrl);
 
-            if (fullUrl.origin !== baseUrl) {
+            if (url.origin !== baseUrlOrigin) {
                 throw new Error(
-                    `Request to send "${requestUrl}" on a ${baseUrl} connection`,
+                    `Request to send "${url}" on a ${baseUrl} connection`,
                 );
             }
 
@@ -114,7 +111,7 @@ export function createAgent(baseUrl: string): Agent {
 
             await createAbortablePromise(
                 writeRequest(connection, {
-                    url: fullUrl.toString(),
+                    url,
                     method,
                     headers,
                     body,
@@ -128,6 +125,9 @@ export function createAgent(baseUrl: string): Agent {
             const onDone = (forceClose = shouldCloseAfterBody) => {
                 if (finalized) return;
                 finalized = true;
+
+                // @ts-ignore
+                connection.setNoDelay?.();
 
                 if (forceClose) {
                     closeConnection();
@@ -146,7 +146,7 @@ export function createAgent(baseUrl: string): Agent {
             );
 
             Object.defineProperty(response, 'url', {
-                value: fullUrl.toString(),
+                value: url,
                 writable: false,
                 configurable: true,
             });
@@ -200,9 +200,6 @@ export function createAgent(baseUrl: string): Agent {
         },
         get isIdle(): boolean {
             return !isBusy;
-        },
-        get lastUsed(): number {
-            return lastUsedTime;
         },
     };
 }

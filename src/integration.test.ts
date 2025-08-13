@@ -19,10 +19,10 @@ Deno.test('Integration - HTTP Client with Agent Pool', async (t) => {
 
                 // These should all use the same agent pool
                 const responses = await Promise.all([
-                    client.send({ url: `${url}/text`, method: 'GET' }),
-                    client.send({ url: `${url}/json`, method: 'GET' }),
+                    client.send({ url: new URL('/text', url), method: 'GET' }),
+                    client.send({ url: new URL('/json', url), method: 'GET' }),
                     client.send({
-                        url: `${url}/echo`,
+                        url: new URL('/echo', url),
                         method: 'POST',
                         body: 'test',
                     }),
@@ -49,7 +49,7 @@ Deno.test('Integration - HTTP Client with Agent Pool', async (t) => {
 
             // Test HTTP
             const httpResponse = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
             assertEquals(httpResponse.status, 200);
@@ -64,10 +64,10 @@ Deno.test('Integration - HTTP Client with Agent Pool', async (t) => {
 
             // Mix of different request types
             const requests = [
-                client.send({ url: `${url}/text`, method: 'GET' }),
-                client.send({ url: `${url}/json`, method: 'GET' }),
+                client.send({ url: new URL('/text', url), method: 'GET' }),
+                client.send({ url: new URL('/json', url), method: 'GET' }),
                 client.send({
-                    url: `${url}/echo`,
+                    url: new URL('/echo', url),
                     method: 'POST',
                     headers: new Headers({
                         'content-type': 'application/json',
@@ -75,7 +75,7 @@ Deno.test('Integration - HTTP Client with Agent Pool', async (t) => {
                     body: JSON.stringify({ test: 'data' }),
                 }),
                 client.send({
-                    url: `${url}/echo`,
+                    url: new URL('/echo', url),
                     method: 'PUT',
                     headers: new Headers({
                         'content-type': 'application/x-www-form-urlencoded',
@@ -104,11 +104,11 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
 
     try {
         await t.step('agent handles connection drops gracefully', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             // Make successful request
             const response1 = await agent.send({
-                url: '/text',
+                url: new URL('/text', url),
                 method: 'GET',
             });
             assertEquals(response1.status, 200);
@@ -121,7 +121,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
             await assertRejects(
                 () =>
                     agent.send({
-                        url: '/text',
+                        url: new URL('/text', url),
                         method: 'GET',
                     }),
                 Error,
@@ -135,7 +135,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
             const { server: newServer, url: newUrl } = await createTestServer();
 
             try {
-                await using pool = createAgentPool(newUrl, {
+                await using pool = createAgentPool(new URL(newUrl), {
                     poolMaxPerHost: 3,
                 });
 
@@ -144,7 +144,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
                     { length: 5 },
                     () =>
                         pool.send({
-                            url: '/text',
+                            url: new URL('/text', newUrl),
                             method: 'GET',
                         }).then((res) => res.text()),
                 );
@@ -171,7 +171,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
 
                 // Test with chunked response endpoint
                 const response = await client.send({
-                    url: `${largeUrl}/chunked`,
+                    url: new URL('/chunked', largeUrl),
                     method: 'GET',
                 });
                 assertEquals(response.status, 200);
@@ -188,7 +188,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
                 await createTestServer();
 
             try {
-                await using pool = createAgentPool(abortUrl, {
+                await using pool = createAgentPool(new URL(abortUrl), {
                     poolMaxPerHost: 3,
                 });
 
@@ -199,7 +199,7 @@ Deno.test('Error Resilience and Edge Cases', async (t) => {
 
                 const requests = controllers.map((controller, i) =>
                     pool.send({
-                        url: '/slow',
+                        url: new URL('/slow', abortUrl),
                         method: 'GET',
                         signal: controller.signal,
                     }).catch((error) => ({ error, index: i }))
@@ -235,14 +235,16 @@ Deno.test('Performance and Stress Tests', async (t) => {
 
     try {
         await t.step('high concurrency stress test', async () => {
-            await using pool = createAgentPool(url, { poolMaxPerHost: 10 });
+            await using pool = createAgentPool(new URL(url), {
+                poolMaxPerHost: 10,
+            });
 
             const numRequests = 100;
             const requests = Array.from(
                 { length: numRequests },
                 (_, i) =>
                     pool.send({
-                        url: '/echo',
+                        url: new URL('/echo', url),
                         method: 'POST',
                         headers: new Headers({
                             'content-type': 'application/json',
@@ -264,14 +266,14 @@ Deno.test('Performance and Stress Tests', async (t) => {
         });
 
         await t.step('connection reuse efficiency', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             const startTime = Date.now();
 
             // Make multiple requests on same connection
             for (let i = 0; i < 20; i++) {
                 const response = await agent.send({
-                    url: '/text',
+                    url: new URL('/text', url),
                     method: 'GET',
                 });
                 await response.text();
@@ -508,7 +510,7 @@ Deno.test('Complete System Integration', async (t) => {
 
             // 1. Initial API call
             const authResponse = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'POST',
                 headers: new Headers({ 'content-type': 'application/json' }),
                 body: JSON.stringify({ username: 'test', password: 'secret' }),
@@ -522,7 +524,7 @@ Deno.test('Complete System Integration', async (t) => {
                 { length: 5 },
                 (_, i) =>
                     client.send({
-                        url: `${url}/echo`,
+                        url: new URL('/echo', url),
                         method: 'GET',
                         headers: new Headers({
                             'authorization': `Bearer token-${i}`,
@@ -538,7 +540,7 @@ Deno.test('Complete System Integration', async (t) => {
 
             // 3. File upload simulation
             const uploadResponse = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'POST',
                 headers: new Headers({
                     'content-type': 'application/octet-stream',
@@ -550,7 +552,7 @@ Deno.test('Complete System Integration', async (t) => {
 
             // 4. Form submission
             const formResponse = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'POST',
                 headers: new Headers({
                     'content-type': 'application/x-www-form-urlencoded',
@@ -588,7 +590,7 @@ Deno.test('Edge Cases and Boundary Conditions', async (t) => {
 
             // Mock an endpoint that returns zero-length content
             const response = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'HEAD', // HEAD responses have no body
             });
 
@@ -602,7 +604,7 @@ Deno.test('Edge Cases and Boundary Conditions', async (t) => {
 
             const longQuery = 'param=' + 'x'.repeat(1000);
             const response = await client.send({
-                url: `${url}/echo?${longQuery}`,
+                url: new URL(`/echo?${longQuery}`, url),
                 method: 'GET',
             });
 
@@ -621,7 +623,7 @@ Deno.test('Edge Cases and Boundary Conditions', async (t) => {
             const unicodeText = 'Hello 世界 🌍 مرحبا';
             const unicodeHeader = '测试 🎯';
             const response = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'POST',
                 headers: new Headers({
                     'X-Unicode-Header': encodeURIComponent(unicodeHeader),
@@ -639,12 +641,12 @@ Deno.test('Edge Cases and Boundary Conditions', async (t) => {
         });
 
         await t.step('rapid sequential requests', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             const results = [];
             for (let i = 0; i < 50; i++) {
                 const response = await agent.send({
-                    url: '/echo',
+                    url: new URL('/echo', url),
                     method: 'POST',
                     body: JSON.stringify({ sequence: i }),
                 });
@@ -658,12 +660,14 @@ Deno.test('Edge Cases and Boundary Conditions', async (t) => {
         });
 
         await t.step('connection pool exhaustion and recovery', async () => {
-            await using pool = createAgentPool(url, { poolMaxPerHost: 2 });
+            await using pool = createAgentPool(new URL(url), {
+                poolMaxPerHost: 2,
+            });
 
             // Exhaust the pool with slow requests
             const slowRequests = Array.from({ length: 3 }, async () => {
                 const res = await pool.send({
-                    url: '/slow',
+                    url: new URL('/slow', url),
                     method: 'GET',
                 });
                 await res.text();
@@ -691,14 +695,14 @@ Deno.test('Performance Characteristics', async (t) => {
 
     try {
         await t.step('connection reuse efficiency', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             const startTime = performance.now();
 
             // Multiple requests on same connection
             for (let i = 0; i < 100; i++) {
                 const response = await agent.send({
-                    url: '/text',
+                    url: new URL('/text', url),
                     method: 'GET',
                 });
                 await response.text();
@@ -711,7 +715,9 @@ Deno.test('Performance Characteristics', async (t) => {
         });
 
         await t.step('concurrent request throughput', async () => {
-            await using pool = createAgentPool(url, { poolMaxPerHost: 10 });
+            await using pool = createAgentPool(new URL(url), {
+                poolMaxPerHost: 10,
+            });
 
             const startTime = performance.now();
             const concurrentRequests = 200;
@@ -720,7 +726,7 @@ Deno.test('Performance Characteristics', async (t) => {
                 { length: concurrentRequests },
                 (_, i) =>
                     pool.send({
-                        url: '/echo',
+                        url: new URL('/echo', url),
                         method: 'POST',
                         body: JSON.stringify({ id: i }),
                     }).then((res) => res.json()),

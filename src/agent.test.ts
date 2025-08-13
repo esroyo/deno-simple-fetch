@@ -7,11 +7,11 @@ Deno.test('Agent - Connection Management', async (t) => {
 
     try {
         await t.step('agent reuses connections', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             // First request establishes connection
             const response1 = await agent.send({
-                url: '/text',
+                url: new URL('/text', url),
                 method: 'GET',
             });
             assertEquals(response1.status, 200);
@@ -19,7 +19,7 @@ Deno.test('Agent - Connection Management', async (t) => {
 
             // Second request should reuse connection
             const response2 = await agent.send({
-                url: '/json',
+                url: new URL('/json', url),
                 method: 'GET',
             });
             assertEquals(response2.status, 200);
@@ -27,11 +27,11 @@ Deno.test('Agent - Connection Management', async (t) => {
         });
 
         await t.step('agent handles connection errors gracefully', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             // Make successful request first
             const response1 = await agent.send({
-                url: '/text',
+                url: new URL('/text', url),
                 method: 'GET',
             });
             await response1.text();
@@ -43,7 +43,7 @@ Deno.test('Agent - Connection Management', async (t) => {
             await assertRejects(
                 () =>
                     agent.send({
-                        url: '/text',
+                        url: new URL('/text', url),
                         method: 'GET',
                     }),
                 Error,
@@ -54,13 +54,13 @@ Deno.test('Agent - Connection Management', async (t) => {
         });
 
         await t.step('agent validates request URLs', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             // Try to send request to different origin
             await assertRejects(
                 () =>
                     agent.send({
-                        url: 'http://different-host.com/test',
+                        url: new URL('http://different-host.com/test'),
                         method: 'GET',
                     }),
                 Error,
@@ -70,13 +70,13 @@ Deno.test('Agent - Connection Management', async (t) => {
 
         await t.step('agent handles protocol validation', async () => {
             await assertRejects(
-                async () => createAgent('ftp://example.com'),
+                async () => createAgent(new URL('ftp://example.com')),
                 Error,
                 'Unsupported protocol',
             );
 
             await assertRejects(
-                async () => createAgent('ws://example.com'),
+                async () => createAgent(new URL('ws://example.com')),
                 Error,
                 'Unsupported protocol',
             );
@@ -84,17 +84,17 @@ Deno.test('Agent - Connection Management', async (t) => {
 
         await t.step('agent supports HTTP and HTTPS', async () => {
             // HTTP agent
-            using httpAgent = createAgent('http://example.com');
+            using httpAgent = createAgent(new URL('http://example.com'));
             assertEquals(httpAgent.hostname, 'example.com');
             assertEquals(httpAgent.port, 80);
 
             // HTTPS agent
-            using httpsAgent = createAgent('https://example.com');
+            using httpsAgent = createAgent(new URL('https://example.com'));
             assertEquals(httpsAgent.hostname, 'example.com');
             assertEquals(httpsAgent.port, 443);
 
             // Custom port
-            using customAgent = createAgent('http://example.com:8080');
+            using customAgent = createAgent(new URL('http://example.com:8080'));
             assertEquals(customAgent.port, 8080);
         });
     } finally {
@@ -109,7 +109,7 @@ Deno.test('Agent - Request Processing', async (t) => {
 
     try {
         await t.step('agent handles different HTTP methods', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             const methods = [
                 'GET',
@@ -123,7 +123,7 @@ Deno.test('Agent - Request Processing', async (t) => {
 
             for (const method of methods) {
                 const response = await agent.send({
-                    url: '/echo',
+                    url: new URL('/echo', url),
                     method,
                     body: method === 'GET' || method === 'HEAD'
                         ? undefined
@@ -139,7 +139,7 @@ Deno.test('Agent - Request Processing', async (t) => {
         });
 
         await t.step('agent handles custom headers', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             const customHeaders = new Headers({
                 'X-Custom-Header': 'test-value',
@@ -147,7 +147,7 @@ Deno.test('Agent - Request Processing', async (t) => {
             });
 
             const response = await agent.send({
-                url: '/echo',
+                url: new URL('/echo', url),
                 method: 'GET',
                 headers: customHeaders,
             });
@@ -158,11 +158,11 @@ Deno.test('Agent - Request Processing', async (t) => {
         });
 
         await t.step('agent handles different body types', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             // String body
             const stringResponse = await agent.send({
-                url: '/echo',
+                url: new URL('/echo', url),
                 method: 'POST',
                 body: 'string body',
             });
@@ -171,7 +171,7 @@ Deno.test('Agent - Request Processing', async (t) => {
 
             // Uint8Array body
             const binaryResponse = await agent.send({
-                url: '/echo',
+                url: new URL('/echo', url),
                 method: 'POST',
                 body: new Uint8Array([1, 2, 3, 4, 5]),
             });
@@ -186,7 +186,7 @@ Deno.test('Agent - Request Processing', async (t) => {
                 },
             });
             const streamResponse = await agent.send({
-                url: '/echo',
+                url: new URL('/echo', url),
                 method: 'POST',
                 body: streamBody,
             });
@@ -202,11 +202,11 @@ Deno.test('Agent - Concurrency', async (t) => {
 
     try {
         await t.step('single agent handles sequential requests', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             // First request
             const response1 = await agent.send({
-                url: '/text',
+                url: new URL('/text', url),
                 method: 'GET',
             });
             assertEquals(response1.status, 200);
@@ -215,7 +215,7 @@ Deno.test('Agent - Concurrency', async (t) => {
 
             // Second request on same agent (connection reuse)
             const response2 = await agent.send({
-                url: '/json',
+                url: new URL('/json', url),
                 method: 'GET',
             });
             assertEquals(response2.status, 200);
@@ -224,11 +224,11 @@ Deno.test('Agent - Concurrency', async (t) => {
         });
 
         await t.step('single agent blocks concurrent requests', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             // Start a slow request
             const slowRequest = agent.send({
-                url: '/slow',
+                url: new URL('/slow', url),
                 method: 'GET',
             });
 
@@ -236,7 +236,7 @@ Deno.test('Agent - Concurrency', async (t) => {
             await assertRejects(
                 async () =>
                     await agent.send({
-                        url: '/text',
+                        url: new URL('/text', url),
                         method: 'GET',
                     }),
                 Error,
@@ -250,7 +250,7 @@ Deno.test('Agent - Concurrency', async (t) => {
 
             // Now agent should be available
             const response2 = await agent.send({
-                url: '/text',
+                url: new URL('/text', url),
                 method: 'GET',
             });
             assertEquals(response2.status, 200);
@@ -258,12 +258,12 @@ Deno.test('Agent - Concurrency', async (t) => {
         });
 
         await t.step('agent state tracking', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             assertEquals(agent.isIdle, true);
 
             const requestPromise = agent.send({
-                url: '/slow',
+                url: new URL('/slow', url),
                 method: 'GET',
             });
 
@@ -278,7 +278,7 @@ Deno.test('Agent - Concurrency', async (t) => {
         });
 
         await t.step('agent whenIdle promise', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             let idleResolved = false;
             agent.whenIdle().then(() => {
@@ -291,7 +291,7 @@ Deno.test('Agent - Concurrency', async (t) => {
 
             // Start a request
             const requestPromise = agent.send({
-                url: '/slow',
+                url: new URL('/slow', url),
                 method: 'GET',
             });
 
@@ -313,31 +313,14 @@ Deno.test('Agent - Concurrency', async (t) => {
             assertEquals(idleResolved, true);
         });
 
-        await t.step('agent lastUsed tracking', async () => {
-            using agent = createAgent(url);
-
-            const initialTime = agent.lastUsed;
-
-            // Make a request after a small delay
-            await new Promise((resolve) => setTimeout(resolve, 10));
-            const response = await agent.send({
-                url: '/text',
-                method: 'GET',
-            });
-            await response.text();
-
-            // lastUsed should be updated
-            assertEquals(agent.lastUsed > initialTime, true);
-        });
-
         await t.step(
             'not consumed responses will close the connection when garbage collected',
             async () => {
-                using agent = createAgent(url);
+                using agent = createAgent(new URL(url));
 
                 await (async () => {
                     const response1 = await agent.send({
-                        url: '/text',
+                        url: new URL('/text', url),
                         method: 'GET',
                     });
                     assertEquals(response1.status, 200);
@@ -358,7 +341,7 @@ Deno.test('Agent - Concurrency', async (t) => {
 
                 // Second request would be able to reuse the same agent
                 const response2 = await agent.send({
-                    url: '/json',
+                    url: new URL('/json', url),
                     method: 'GET',
                 });
                 assertEquals(response2.status, 200);
@@ -366,7 +349,7 @@ Deno.test('Agent - Concurrency', async (t) => {
         );
 
         await t.step('agent connection error handling', async () => {
-            using agent = createAgent(url);
+            using agent = createAgent(new URL(url));
 
             // Close the test server to simulate connection error
             await server.shutdown();
@@ -374,7 +357,7 @@ Deno.test('Agent - Concurrency', async (t) => {
             await assertRejects(
                 () =>
                     agent.send({
-                        url: '/text',
+                        url: new URL('/text', url),
                         method: 'GET',
                     }),
                 Error,

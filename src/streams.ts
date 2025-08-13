@@ -1,53 +1,3 @@
-import type { TimeoutOptions } from './types.ts';
-
-export function createTimeoutStream(
-    stream: ReadableStream<Uint8Array>,
-    options: TimeoutOptions = {},
-): ReadableStream<Uint8Array> {
-    if (!options.signal) {
-        return stream;
-    }
-
-    const signal = options.signal;
-
-    return new ReadableStream({
-        async start(controller) {
-            const reader = stream.getReader();
-
-            const onAbort = () => {
-                const reason = signal.reason ||
-                    new DOMException(
-                        'The operation was aborted.',
-                        'AbortError',
-                    );
-                reader.cancel(reason);
-                controller.error(reason);
-            };
-
-            if (signal.aborted) {
-                onAbort();
-                return;
-            }
-
-            signal.addEventListener('abort', onAbort, { once: true });
-
-            try {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    controller.enqueue(value);
-                }
-                controller.close();
-            } catch (error) {
-                controller.error(error);
-            } finally {
-                signal.removeEventListener('abort', onAbort);
-                reader.releaseLock();
-            }
-        },
-    });
-}
-
 // Chunked encoding using TransformStream
 export function createChunkedEncodingStream(): TransformStream<
     Uint8Array,
@@ -204,19 +154,6 @@ export function createChunkedDecodingStream(): TransformStream<
     });
 }
 
-// Compression utilities
-export function createCompressionStream(
-    format: CompressionFormat = 'gzip',
-): CompressionStream {
-    return new CompressionStream(format);
-}
-
-export function createDecompressionStream(
-    format: CompressionFormat = 'gzip',
-): DecompressionStream {
-    return new DecompressionStream(format);
-}
-
 // Connection to ReadableStream
 export function connectionToReadableStream(
     conn: Deno.Conn,
@@ -236,54 +173,4 @@ export function connectionToReadableStream(
             }
         },
     }, { highWaterMark: 0 });
-}
-
-export class StreamingResponseReader {
-    private _reader: ReadableStreamDefaultReader<Uint8Array>;
-    private _totalBytesRead = 0;
-
-    constructor(
-        stream: ReadableStream<Uint8Array>,
-    ) {
-        this._reader = stream.getReader();
-    }
-
-    async *readChunks(): AsyncGenerator<Uint8Array, void, unknown> {
-        try {
-            while (true) {
-                const { done, value } = await this._reader.read();
-
-                if (done) break;
-
-                this._totalBytesRead += value.length;
-
-                yield value;
-
-                // Yield control periodically for backpressure
-                if (this._totalBytesRead % (1024 * 1024) === 0) { // Every 1MB
-                    await new Promise<void>((resolve) =>
-                        globalThis.queueMicrotask(() => resolve())
-                    );
-                }
-            }
-        } finally {
-            this._reader.releaseLock();
-        }
-    }
-
-    async readToFile(filePath: string): Promise<void> {
-        const file = await Deno.open(filePath, { write: true, create: true });
-
-        try {
-            for await (const chunk of this.readChunks()) {
-                await file.write(chunk);
-            }
-        } finally {
-            file.close();
-        }
-    }
-
-    get bytesRead(): number {
-        return this._totalBytesRead;
-    }
 }

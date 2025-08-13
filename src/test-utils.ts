@@ -7,17 +7,22 @@ let port = initialPort;
 
 // Mock test server
 export async function createTestServer(): Promise<
-    { server: Deno.HttpServer; url: string }
+    { server: Deno.HttpServer; url: string; onReady: () => Promise<void> }
 > {
     port += 1;
+    const serverReady = Promise.withResolvers<void>();
+
     if (port - initialPort > 100) {
         throw new Error('Address port retries exhausted');
     }
+
     try {
         const server = Deno.serve({
             port,
             hostname: '127.0.0.1',
-            onListen: () => {},
+            onListen: () => {
+                serverReady.resolve();
+            },
         }, (req) => {
             const url = new URL(req.url);
 
@@ -107,6 +112,7 @@ export async function createTestServer(): Promise<
         return {
             server,
             url: `http://127.0.0.1:${port}`,
+            onReady: () => serverReady.promise,
         };
     } catch (e) {
         if (Error.isError(e) && e.name === 'AddrInUse') {

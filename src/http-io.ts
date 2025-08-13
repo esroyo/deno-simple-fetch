@@ -81,25 +81,24 @@ export class LineReader {
 export async function writeRequest(
     conn: Deno.Conn,
     request: {
-        url: string;
+        url: URL;
         method: string;
         headers?: Headers;
         body?: string | Uint8Array | ReadableStream;
     },
 ): Promise<void> {
     const { method, headers = new Headers(), body } = request;
-    const url = new URL(request.url);
 
     const encoder = new TextEncoder();
 
     // Write request line
-    const requestLine = `${method.toUpperCase()} ${url.pathname}${
-        url.search || ''
+    const requestLine = `${method.toUpperCase()} ${request.url.pathname}${
+        request.url.search || ''
     } HTTP/1.1\r\n`;
     await conn.write(encoder.encode(requestLine));
 
     if (!headers.has('host')) {
-        headers.set('host', url.host);
+        headers.set('host', request.url.host);
     }
 
     let bodyStream: ReadableStream<Uint8Array> | undefined;

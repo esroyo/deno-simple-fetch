@@ -3,7 +3,7 @@ export interface TimeoutOptions {
 }
 
 export interface SendOptions {
-    url: string;
+    url: URL;
     method: string;
     headers?: Headers;
     body?: string | Uint8Array | ReadableStream;
@@ -19,7 +19,6 @@ export interface Agent {
     send(options: SendOptions): Promise<Response>;
     whenIdle(): Promise<void>;
     readonly isIdle: boolean;
-    readonly lastUsed: number;
 }
 
 // Agent pool configuration

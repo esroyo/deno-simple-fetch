@@ -81,7 +81,7 @@ Deno.test('HTTP I/O - Request Writing', async (t) => {
             });
 
             await writeRequest(conn, {
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'GET',
                 headers: new Headers({ 'User-Agent': 'Test' }),
             });
@@ -111,7 +111,7 @@ Deno.test('HTTP I/O - Request Writing', async (t) => {
 
             const requestBody = JSON.stringify({ test: 'data' });
             await writeRequest(conn, {
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'POST',
                 headers: new Headers({ 'Content-Type': 'application/json' }),
                 body: requestBody,
@@ -141,7 +141,7 @@ Deno.test('HTTP I/O - Response Reading', async (t) => {
             });
 
             await writeRequest(conn, {
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
 
@@ -169,7 +169,7 @@ Deno.test('HTTP I/O - Response Reading', async (t) => {
             });
 
             await writeRequest(conn, {
-                url: `${url}/chunked`,
+                url: new URL('/chunked', url),
                 method: 'GET',
             });
 
@@ -196,7 +196,7 @@ Deno.test('HTTP I/O - Response Reading', async (t) => {
             });
 
             await writeRequest(conn, {
-                url: `${url}/gzip`,
+                url: new URL('/gzip', url),
                 method: 'GET',
                 headers: new Headers({ 'Accept-Encoding': 'gzip' }),
             });
@@ -224,7 +224,7 @@ Deno.test('HTTP I/O - Response Reading', async (t) => {
             });
 
             await writeRequest(conn, {
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'HEAD',
             });
 

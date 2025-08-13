@@ -9,7 +9,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('basic GET request', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
             assertEquals(response.status, 200);
@@ -21,7 +21,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('POST request with JSON body', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'POST',
                 headers: new Headers({ 'content-type': 'application/json' }),
                 body: JSON.stringify({ test: 'data' }),
@@ -35,7 +35,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('PUT request', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'PUT',
                 headers: new Headers({ 'content-type': 'application/json' }),
                 body: JSON.stringify({ updated: true }),
@@ -49,7 +49,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('DELETE request', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'DELETE',
             });
 
@@ -61,7 +61,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('PATCH request', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'PATCH',
                 headers: new Headers({ 'content-type': 'application/json' }),
                 body: JSON.stringify({ patched: true }),
@@ -75,7 +75,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('HEAD request', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'HEAD',
             });
             assertEquals(response.status, 200);
@@ -84,7 +84,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('OPTIONS request', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'OPTIONS',
             });
 
@@ -96,7 +96,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('custom headers', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'GET',
                 headers: new Headers({ 'x-custom-header': 'test-value' }),
             });
@@ -111,7 +111,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
             await assertRejects(
                 () =>
                     client.send({
-                        url: `${url}/slow`,
+                        url: new URL('/slow', url),
                         method: 'GET',
                         signal: AbortSignal.timeout(100),
                     }).then((res) => res.text()),
@@ -130,7 +130,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
             await assertRejects(
                 () =>
                     client.send({
-                        url: `${url}/slow`,
+                        url: new URL('/slow', url),
                         method: 'GET',
                         signal: controller.signal,
                     })
@@ -143,7 +143,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('bodyUsed tracking', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
 
@@ -164,14 +164,14 @@ Deno.test('HTTP Client - raw API', async (t) => {
 
             // Success response
             const goodResponse = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
             assertEquals(goodResponse.ok, true);
 
             // Error response
             const badResponse = await client.send({
-                url: `${url}/notfound`,
+                url: new URL('/notfound', url),
                 method: 'GET',
             });
             assertEquals(badResponse.ok, false);
@@ -181,7 +181,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
         await t.step('arrayBuffer and blob methods', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
 
@@ -190,7 +190,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
 
             // Test with fresh response for blob
             const response2 = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
             const blob = await response2.blob();
@@ -204,7 +204,7 @@ Deno.test('HTTP Client - raw API', async (t) => {
 
                 // Make request to redirect endpoint
                 const response = await client.send({
-                    url: `${url}/redirect`,
+                    url: new URL('/redirect', url),
                     method: 'GET',
                 });
 
@@ -233,7 +233,7 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
         await t.step('direct stream access', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
 
@@ -270,7 +270,7 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
         await t.step('chunked response handling', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/chunked`,
+                url: new URL('/chunked', url),
                 method: 'GET',
             });
 
@@ -282,7 +282,7 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
         await t.step('gzip decompression', async () => {
             await using client = new HttpClient();
             const response = await client.send({
-                url: `${url}/gzip`,
+                url: new URL('/gzip', url),
                 method: 'GET',
             });
 
@@ -296,7 +296,7 @@ Deno.test('HTTP Client - Stream Access', async (t) => {
             const controller = new AbortController();
 
             const responsePromise = client.send({
-                url: `${url}/slow`,
+                url: new URL('/slow', url),
                 method: 'GET',
                 signal: controller.signal,
             });
@@ -322,7 +322,7 @@ Deno.test('HTTP Client - Error Handling', async (t) => {
             await assertRejects(
                 () =>
                     client.send({
-                        url: 'http://localhost:99999/test',
+                        url: new URL('http://localhost:65535/test'),
                         method: 'GET',
                     }),
                 Error,
@@ -333,7 +333,11 @@ Deno.test('HTTP Client - Error Handling', async (t) => {
             await using client = new HttpClient();
 
             await assertRejects(
-                () => client.send({ url: 'not-a-url', method: 'GET' }),
+                () =>
+                    client.send({
+                        url: 'not-a-url' as unknown as URL,
+                        method: 'GET',
+                    }),
                 Error,
             );
         });
@@ -344,7 +348,7 @@ Deno.test('HTTP Client - Error Handling', async (t) => {
             await assertRejects(
                 () =>
                     client.send({
-                        url: 'ftp://example.com/file',
+                        url: new URL('ftp://example.com/file'),
                         method: 'GET',
                     }),
                 Error,
@@ -365,15 +369,15 @@ Deno.test('HTTP Client - Connection Management', async (t) => {
 
             // Make multiple requests to same origin
             const response1 = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
             const response2 = await client.send({
-                url: `${url}/json`,
+                url: new URL('/json', url),
                 method: 'GET',
             });
             const response3 = await client.send({
-                url: `${url}/echo`,
+                url: new URL('/echo', url),
                 method: 'GET',
             });
 
@@ -391,7 +395,7 @@ Deno.test('HTTP Client - Connection Management', async (t) => {
 
             // Make a request
             const response = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
             await response.text();
@@ -401,7 +405,7 @@ Deno.test('HTTP Client - Connection Management', async (t) => {
 
             // Subsequent requests should create new agent pools
             const response2 = await client.send({
-                url: `${url}/text`,
+                url: new URL('/text', url),
                 method: 'GET',
             });
             assertEquals(response2.status, 200);

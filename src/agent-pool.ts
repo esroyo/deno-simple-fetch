@@ -8,11 +8,9 @@ const defaultMax = Number.MAX_SAFE_INTEGER;
 const defaultIdleTimeout = 30_000;
 
 export function createAgentPool(
-    baseUrl: string,
+    baseUrl: URL,
     options: AgentPoolOptions = {},
 ): AgentPool {
-    const poolUrl = new URL(baseUrl);
-
     const evictionRunIntervalMillis = options.poolIdleTimeout !== false
         ? Math.min(
             options.poolIdleTimeout || defaultEvictionInterval,
@@ -29,12 +27,18 @@ export function createAgentPool(
         ? Math.max(0, options.poolMaxIdlePerHost)
         : 0;
 
-    if (poolUrl.protocol !== 'http:' && poolUrl.protocol !== 'https:') {
+    if (baseUrl.protocol !== 'http:' && baseUrl.protocol !== 'https:') {
         throw new Error(
-            `Unsupported protocol: ${poolUrl.protocol}. Only http: and https: are supported.`,
+            `Unsupported protocol: ${baseUrl.protocol}. Only http: and https: are supported.`,
         );
     }
-
+    const poolOptions = {
+        autostart: false,
+        evictionRunIntervalMillis,
+        softIdleTimeoutMillis,
+        max,
+        min,
+    };
     const pool = createPool<Agent>({
         async create() {
             return createAgent(baseUrl);
@@ -42,13 +46,7 @@ export function createAgentPool(
         async destroy(agent) {
             agent.close();
         },
-    }, {
-        autostart: false,
-        evictionRunIntervalMillis,
-        softIdleTimeoutMillis,
-        max,
-        min,
-    });
+    }, poolOptions);
 
     let releaseAgentFns: Array<(forceClose?: boolean) => Promise<void>> = [];
 
@@ -79,7 +77,7 @@ export function createAgentPool(
             agent.whenIdle().then(() => releaseAgentFn());
             return responsePromise;
         } catch (error) {
-            await releaseAgentFn();
+            await releaseAgentFn(true);
             throw error;
         }
     }
@@ -93,10 +91,10 @@ export function createAgentPool(
     return {
         [Symbol.asyncDispose]: close,
         close,
-        hostname: poolUrl.hostname,
-        port: poolUrl.port
-            ? parseInt(poolUrl.port)
-            : (poolUrl.protocol === 'https:' ? 443 : 80),
+        hostname: baseUrl.hostname,
+        port: baseUrl.port
+            ? parseInt(baseUrl.port)
+            : (baseUrl.protocol === 'https:' ? 443 : 80),
         send,
     };
 }
