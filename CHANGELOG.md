@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.1](https://github.com/esroyo/deno-simple-fetch/compare/v0.1.0...v0.1.1) (2025-08-13)
+
+
+### Bug Fixes
+
+* correct exported symbols ([5f5cafa](https://github.com/esroyo/deno-simple-fetch/commit/5f5cafaa21bc624e14ff84b9c58456c9d8bad593))
+
 ## 0.1.0 (2025-08-13)
 
 
