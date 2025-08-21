@@ -1,6 +1,9 @@
 # Deno simple fetch
 
-[![JSR](https://jsr.io/badges/@esroyo/deno-simple-fetch)](https://jsr.io/@esroyo/deno-simple-fetch) [![JSR Score](https://jsr.io/badges/@esroyo/deno-simple-fetch/score)](https://jsr.io/@esroyo/deno-simple-fetch) [![codecov](https://codecov.io/gh/esroyo/deno-simple-fetch/graph/badge.svg?token=HVROUGXKTD)](https://codecov.io/gh/esroyo/deno-simple-fetch)
+[![JSR](https://jsr.io/badges/@esroyo/deno-simple-fetch)](https://jsr.io/@esroyo/deno-simple-fetch)
+[![JSR Score](https://jsr.io/badges/@esroyo/deno-simple-fetch/score)](https://jsr.io/@esroyo/deno-simple-fetch)
+[![ci](https://github.com/esroyo/deno-simple-fetch/actions/workflows/ci.yml/badge.svg)](https://github.com/esroyo/deno-simple-fetch/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/esroyo/deno-simple-fetch/graph/badge.svg?token=HVROUGXKTD)](https://codecov.io/gh/esroyo/deno-simple-fetch)
 
 A simple HTTP client for Deno with connection pooling and manual redirect handling.
 

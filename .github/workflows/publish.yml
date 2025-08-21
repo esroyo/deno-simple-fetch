@@ -1,0 +1,20 @@
+name: publish
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/*/CHANGELOG.md"
+      - "packages/*/Releases.md"
+      - "Releases.md"
+      - "CHANGELOG.md"
+  workflow_dispatch:
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+      - run: deno publish

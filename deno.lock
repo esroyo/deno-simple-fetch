@@ -1,7 +1,7 @@
 {
   "version": "4",
   "specifiers": {
-    "jsr:@esroyo/generic-pool@3.10.1": "3.10.1",
+    "jsr:@esroyo/generic-pool@3.10.4": "3.10.4",
     "jsr:@std/assert@1.0.6": "1.0.6",
     "jsr:@std/assert@^1.0.7": "1.0.14",
     "jsr:@std/async@^1.0.8": "1.0.14",
@@ -17,8 +17,8 @@
     "npm:request@*": "2.88.2"
   },
   "jsr": {
-    "@esroyo/generic-pool@3.10.1": {
-      "integrity": "efc2247b639d1171b579f8797db186fa4c89e577545c0a2362e5fac8bdd1ee84"
+    "@esroyo/generic-pool@3.10.4": {
+      "integrity": "57702cbf0b4098d278c945de5630699c20f5e49f8aab4337c9df68f4226cb83e"
     },
     "@std/assert@1.0.6": {
       "integrity": "1904c05806a25d94fe791d6d883b685c9e2dcd60e4f9fc30f4fc5cf010c72207",
@@ -1542,7 +1542,7 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@esroyo/generic-pool@3.10.1",
+      "jsr:@esroyo/generic-pool@3.10.4",
       "jsr:@std/assert@1.0.6",
       "jsr:@std/testing@1.0.4"
     ]

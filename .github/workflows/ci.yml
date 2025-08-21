@@ -1,9 +1,10 @@
-name: Test
+name: ci
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,7 +17,7 @@ jobs:
       - name: Install lcov
         run: sudo apt-get install -y lcov
       - name: Git Checkout Deno Module
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Use Deno Version ${{ matrix.deno-version }}
         uses: denolib/setup-deno@v2
         with:
@@ -31,4 +32,3 @@ jobs:
         uses: codecov/codecov-action@v3
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
