@@ -1,3 +1,10 @@
+### [0.1.2](https://github.com/esroyo/deno-simple-fetch/compare/v0.1.1...v0.1.2) (2025.08.21)
+
+- fix: add missing asyncDispose in the fetch type
+  ([ec6a1f8](https://github.com/esroyo/deno-simple-fetch/commit/ec6a1f865f3b07bbca87b1056a37fd7ab538abff))
+- chore: adopt deno-bump-workspaces as release tool
+  ([cd3c0e6](https://github.com/esroyo/deno-simple-fetch/commit/cd3c0e6c026f34275a44ac432f6a8f22893fe948))
+
 ### [0.1.1](https://github.com/esroyo/deno-simple-fetch/compare/v0.1.0...v0.1.1) (2025.08.13)
 
 - fix: correct exported symbols
