@@ -92,7 +92,11 @@ async function fetchImpl(
 }
 
 // Factory function for creating bound fetch function
-export function createFetch(client?: HttpClient): typeof fetch {
+export function createFetch(
+    client?: HttpClient,
+):
+    & typeof fetch
+    & Record<typeof Symbol.asyncDispose | 'close', () => Promise<void>> {
     const defaultHttpClient: HttpClient = client || new HttpClient();
     const fetch = async (
         input: RequestInfo | URL,
