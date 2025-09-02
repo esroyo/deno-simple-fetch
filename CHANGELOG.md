@@ -1,3 +1,8 @@
+### [0.1.3](https://github.com/esroyo/deno-simple-fetch/compare/v0.1.2...v0.1.3) (2025.09.02)
+
+- fix: avoid throw when request is aborted and body locked
+  ([c500647](https://github.com/esroyo/deno-simple-fetch/commit/c500647c2218063d8591127f843809cf8a1f4c7d))
+
 ### [0.1.2](https://github.com/esroyo/deno-simple-fetch/compare/v0.1.1...v0.1.2) (2025.08.21)
 
 - fix: add missing asyncDispose in the fetch type
