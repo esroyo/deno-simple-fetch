@@ -1,3 +1,8 @@
+### [0.1.4](https://github.com/esroyo/deno-simple-fetch/compare/v0.1.3...v0.1.4) (2025.09.02)
+
+- fix: handle lenient line endings (without CR)
+  ([39d95d8](https://github.com/esroyo/deno-simple-fetch/commit/39d95d8011705d6fc95050be1dc97d1cef6041e6))
+
 ### [0.1.3](https://github.com/esroyo/deno-simple-fetch/compare/v0.1.2...v0.1.3) (2025.09.02)
 
 - fix: avoid throw when request is aborted and body locked
