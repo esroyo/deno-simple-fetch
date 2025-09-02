@@ -348,6 +348,54 @@ Deno.test('Agent - Concurrency', async (t) => {
             },
         );
 
+        await t.step(
+            'request abortion handling before using the body should error',
+            async () => {
+                using agent = createAgent(new URL(url));
+
+                const ctrl = new AbortController();
+
+                const response1 = await agent.send({
+                    url: new URL('/text', url),
+                    method: 'GET',
+                    signal: ctrl.signal,
+                });
+                assertEquals(response1.status, 200);
+
+                ctrl.abort();
+
+                await agent.whenIdle();
+
+                await assertRejects(
+                    () => response1.text(),
+                    TypeError,
+                    'Body already consumed',
+                );
+            },
+        );
+
+        await t.step(
+            'request abortion handling after using the body should not error',
+            async () => {
+                using agent = createAgent(new URL(url));
+
+                const ctrl = new AbortController();
+
+                const response1 = await agent.send({
+                    url: new URL('/text', url),
+                    method: 'GET',
+                    signal: ctrl.signal,
+                });
+                assertEquals(response1.status, 200);
+
+                assertEquals(await response1.text(), 'Hello, World!');
+
+                ctrl.abort();
+
+                await agent.whenIdle();
+            },
+        );
+
         await t.step('agent connection error handling', async () => {
             using agent = createAgent(new URL(url));
 

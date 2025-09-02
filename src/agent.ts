@@ -153,9 +153,12 @@ export function createAgent(baseUrl: URL): Agent {
 
             const responseRef = new WeakRef(response);
             signal.addEventListener('abort', (ev) => {
-                responseRef.deref()?.body?.cancel(
-                    (ev.target as AbortSignal)?.reason,
-                );
+                const res = responseRef.deref();
+                if (res && res.body && !(res.bodyUsed || res.body.locked)) {
+                    res?.body?.cancel(
+                        (ev.target as AbortSignal)?.reason,
+                    );
+                }
             });
 
             // Important: For HTTP/1.1, connection can be reused if we can determine
