@@ -50,6 +50,22 @@ Deno.test('HTTP I/O - Line Reader', async (t) => {
         assertEquals(headers.get('content-length'), '100');
     });
 
+    await t.step('read headers with lenient endings (just "\n")', async () => {
+        const data = 'Content-Type: application/json\nContent-Length: 100\n\n';
+        const stream = new ReadableStream({
+            start(controller) {
+                controller.enqueue(new TextEncoder().encode(data));
+                controller.close();
+            },
+        });
+
+        const lineReader = new LineReader(stream.getReader());
+        const headers = await lineReader.readHeaders();
+
+        assertEquals(headers.get('content-type'), 'application/json');
+        assertEquals(headers.get('content-length'), '100');
+    });
+
     await t.step('handle partial reads', async () => {
         const data = 'Partial line\r\n';
         const stream = new ReadableStream({

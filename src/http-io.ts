@@ -19,23 +19,31 @@ export class LineReader {
         this._buffer = combined;
     }
 
-    protected _findLineEnd(): number {
-        for (let i = 0; i < this._buffer.length - 1; i++) {
-            if (this._buffer[i] === 0x0D && this._buffer[i + 1] === 0x0A) {
-                return i;
+    protected _findLineEnd(): { pos: number; length: number } {
+        for (let i = 0; i < this._buffer.length; i += 1) {
+            // Check for CRLF first
+            if (
+                i < this._buffer.length - 1 &&
+                this._buffer[i] === 0x0D && this._buffer[i + 1] === 0x0A
+            ) {
+                return { pos: i, length: 2 }; // Skip both \r\n
+            }
+            // Check for LF only
+            if (this._buffer[i] === 0x0A) {
+                return { pos: i, length: 1 }; // Skip just \n
             }
         }
-        return -1;
+        return { pos: -1, length: 0 };
     }
 
     async readLine(): Promise<string | null> {
         while (true) {
-            const lineEnd = this._findLineEnd();
+            const { pos: lineEnd, length } = this._findLineEnd();
             if (lineEnd !== -1) {
                 const line = this._decoder.decode(
                     this._buffer.slice(0, lineEnd),
                 );
-                this._buffer = this._buffer.slice(lineEnd + 2);
+                this._buffer = this._buffer.slice(lineEnd + length);
                 return line;
             }
 

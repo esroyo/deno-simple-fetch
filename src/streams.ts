@@ -44,21 +44,29 @@ export function createChunkedDecodingStream(): TransformStream<
     }
 
     function readLine(): string | null {
-        const crlfIndex = findCRLF(buffer);
+        const { pos: crlfIndex, length } = findLineEnd(buffer);
         if (crlfIndex === -1) return null;
 
         const line = decoder.decode(buffer.slice(0, crlfIndex));
-        buffer = buffer.slice(crlfIndex + 2);
+        buffer = buffer.slice(crlfIndex + length);
         return line;
     }
 
-    function findCRLF(data: Uint8Array): number {
-        for (let i = 0; i < data.length - 1; i++) {
-            if (data[i] === 0x0D && data[i + 1] === 0x0A) {
-                return i;
+    function findLineEnd(data: Uint8Array): { pos: number; length: number } {
+        for (let i = 0; i < data.length; i += 1) {
+            // Check for CRLF first
+            if (
+                i < data.length - 1 &&
+                data[i] === 0x0D && data[i + 1] === 0x0A
+            ) {
+                return { pos: i, length: 2 }; // Skip both \r\n
+            }
+            // Check for LF only
+            if (data[i] === 0x0A) {
+                return { pos: i, length: 1 }; // Skip just \n
             }
         }
-        return -1;
+        return { pos: -1, length: 0 };
     }
 
     // Strict validation for chunk size line format
