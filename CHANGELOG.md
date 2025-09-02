@@ -1,3 +1,8 @@
+### [0.1.5](https://github.com/esroyo/deno-simple-fetch/compare/v0.1.4...v0.1.5) (2025.09.02)
+
+- fix: make connection reusable after a chunked req
+  ([c979ede](https://github.com/esroyo/deno-simple-fetch/commit/c979ede598b0abf5ec1fe2fe7362acab299ba047))
+
 ### [0.1.4](https://github.com/esroyo/deno-simple-fetch/compare/v0.1.3...v0.1.4) (2025.09.02)
 
 - fix: handle lenient line endings (without CR)
