@@ -25,7 +25,9 @@ export function createChunkedEncodingStream(): TransformStream<
 }
 
 // Chunked decoding using TransformStream
-export function createChunkedDecodingStream(): TransformStream<
+export function createChunkedDecodingStream(
+    abortController?: AbortController,
+): TransformStream<
     Uint8Array,
     Uint8Array
 > {
@@ -125,6 +127,11 @@ export function createChunkedDecodingStream(): TransformStream<
                     ) {
                         buffer = buffer.slice(2);
                         state = 'size';
+                    } else if (
+                        buffer.length >= 1 && buffer[0] === 0x0A
+                    ) {
+                        buffer = buffer.slice(1);
+                        state = 'size';
                     } else if (buffer.length === 1 && buffer[0] === 0x0D) {
                         break;
                     } else if (buffer.length === 0) {
@@ -142,6 +149,7 @@ export function createChunkedDecodingStream(): TransformStream<
                     if (trailerLine === '') {
                         state = 'done';
                         controller.terminate();
+                        abortController?.abort();
                         return;
                     }
                 }

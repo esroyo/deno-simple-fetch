@@ -46,8 +46,8 @@ Deno.test('Stream Utilities - Advanced Cases', async (t) => {
     await t.step('chunked decoding with malformed data', async () => {
         const encoder = new TextEncoder();
 
-        // Missing CRLF after chunk size
-        const malformedData = '5\ndata\r\n0\r\n\r\n';
+        // Missing LF after chunk size
+        const malformedData = '5\rdata\r\n0\r\n\r\n';
         const stream = new ReadableStream({
             start(controller) {
                 controller.enqueue(encoder.encode(malformedData));

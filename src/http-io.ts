@@ -153,6 +153,7 @@ export async function readResponse(
 
     // Create body stream from remaining buffer and connection
     const remainingBuffer = lineReader.getRemainingBuffer();
+    const abortController = new AbortController();
     let bodyStream: ReadableStream<Uint8Array> = new ReadableStream({
         async start(controller) {
             if (ignoreBody) {
@@ -165,9 +166,14 @@ export async function readResponse(
             }
         },
         async pull(controller) {
+            const stream = connectionToReadableStream(conn);
+            const reader = stream.getReader();
             try {
-                for await (const chunk of connectionToReadableStream(conn)) {
-                    controller.enqueue(chunk);
+                while (true) {
+                    if (abortController.signal.aborted) break;
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    controller.enqueue(value);
                 }
                 controller.close();
             } catch (error) {
@@ -183,7 +189,9 @@ export async function readResponse(
 
     // Handle chunked encoding
     if (isChunked) {
-        bodyStream = bodyStream.pipeThrough(createChunkedDecodingStream());
+        bodyStream = bodyStream.pipeThrough(
+            createChunkedDecodingStream(abortController),
+        );
     } else if (contentLength !== null) {
         const length = parseInt(contentLength);
         let bytesRead = 0;
@@ -205,6 +213,7 @@ export async function readResponse(
 
                     if (bytesRead >= length) {
                         controller.terminate();
+                        abortController.abort();
                     }
                 },
             }),
